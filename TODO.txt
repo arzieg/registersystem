@@ -1,0 +1,4 @@
+systemmanager -u <user> -p <password> -g group -h host -add/remove
+
+
+
