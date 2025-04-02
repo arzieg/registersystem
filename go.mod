@@ -1,3 +1,3 @@
-module github.com/arzieg/systemmanager
+module systemmanager
 
 go 1.21.13

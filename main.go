@@ -1,13 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"strings"
+
+	"systemmanager/webapi"
 )
 
 var (
@@ -109,64 +108,7 @@ func main() {
 	fmt.Println("susemgr:", susemgr)
 	fmt.Println("task:", task)
 
-	// Define the API endpoint
-	apiURL := fmt.Sprintf("%s%s", susemgr, "/rhn/manager/api")
-	fmt.Println("apiURL:", apiURL)
+	sessioncookie := webapi.Login(user, password, susemgr)
+	fmt.Fprintf(os.Stdout, "\nSession Cookie %s\n", sessioncookie)
 
-	apiMethod := fmt.Sprintf("%s%s", apiURL, "/auth/login")
-	fmt.Println("apiMethod:", apiMethod)
-
-	// JSON payload
-	payload := fmt.Sprintf(`{"login": "%s", "password": "%s"}`, user, password)
-	fmt.Println("payload:", payload)
-
-	bodyReader := bytes.NewReader([]byte(payload))
-
-	// Create a new HTTP request
-	req, err := http.NewRequest(http.MethodPost, apiMethod, bodyReader)
-	if err != nil {
-		fmt.Printf("Error creating request: %v\n", err)
-		return
-	}
-
-	// Set the required header
-	req.Header.Set("Content-Type", "application/json")
-
-	// Create an HTTP client
-	client := &http.Client{}
-
-	// Make the HTTP request
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Printf("Error making the request: %v\n", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	// Read the response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("Error reading response: %v\n", err)
-		return
-	}
-
-	// Print the output
-	fmt.Printf("HTTP Response Code: %d\n", resp.StatusCode)
-	fmt.Printf("HTTP Response Body: %s\n", string(body))
-
-	if resp.StatusCode == 200 {
-		// Retrieve the pxt-session-cookie
-		cookieCounter := 0
-		for _, cookie := range resp.Cookies() {
-			if cookie.Name == "pxt-session-cookie" {
-				cookieCounter++
-				if cookieCounter == 2 { // Check if it's the second cookie
-					fmt.Printf("Second pxt-session-cookie: %s\n", cookie.Value)
-					return
-				}
-			}
-		}
-
-		fmt.Println("Second pxt-session-cookie not found in the response.")
-	}
 }
