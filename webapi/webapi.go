@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 )
@@ -44,7 +45,7 @@ func Login(username, password, susemgr string) string {
 	}
 
 	// Create an HTTP POST request
-	req, err := http.NewRequest(http.MethodPost, apiMethod, bytes.NewBuffer(payloadBytes))
+	req, err := http.NewRequest("POST", apiMethod, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		fmt.Printf("Error creating request: %v\n", err)
 		os.Exit(1)
@@ -84,14 +85,54 @@ func Login(username, password, susemgr string) string {
 
 func AddSystem(sessioncookie, susemgr, hostname, group string) (string, error) {
 
+	fmt.Printf("Session Cookie in Addsystem %s\n", sessioncookie)
 	// Define the API endpoint
 	apiURL := fmt.Sprintf("%s%s", susemgr, "/rhn/manager/api")
 	fmt.Println("apiURL:", apiURL)
 
-	apiMethod := fmt.Sprintf("%s%s", apiURL, "/systemgroup/addOrRemoveSystems")
-	fmt.Println("apiMethod:", apiMethod)
+	apiMethodGetSystemId := fmt.Sprintf("%s%s%s", apiURL, "/system/getId?name=", hostname)
+	fmt.Println("apiMethod:", apiMethodGetSystemId)
 
-	return "200", nil
+	// Create a new HTTP request
+	req, err := http.NewRequest(http.MethodGet, apiMethodGetSystemId, nil)
+	if err != nil {
+		fmt.Printf("Error creating request: %s\n", err)
+		os.Exit(1)
+	}
+
+	// Add headers
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{
+		Name:  "pxt-session-cookie",
+		Value: sessioncookie,
+	})
+
+	// Send the HTTP request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("Error sending request: %s\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	// Check HTTP status
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("Failed: HTTP %d\n", resp.StatusCode)
+		os.Exit(1)
+	}
+
+	// Read response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Error reading response: %s\n", err)
+		os.Exit(1)
+	}
+
+	// Print the response
+	fmt.Printf("Response:\n%s\n", string(bodyBytes))
+
+	return string(bodyBytes), nil
 
 }
 

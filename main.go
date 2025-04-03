@@ -111,4 +111,16 @@ func main() {
 	sessioncookie := webapi.Login(user, password, susemgr)
 	fmt.Fprintf(os.Stdout, "\nSession Cookie %s\n", sessioncookie)
 
+	if task == "add" {
+		result, err := webapi.AddSystem(sessioncookie, susemgr, hostname, group)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "An error occured, %v\n", err)
+			fmt.Printf("Got result: %v\n", result)
+			os.Exit(1)
+		} else {
+			fmt.Printf("Successful add system %s to group %s\n", hostname, group)
+			fmt.Printf("Got result: %v\n", result)
+		}
+	}
+
 }
