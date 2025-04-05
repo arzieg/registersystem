@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -100,27 +101,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("verbose:", verbose)
-	fmt.Println("user:", user)
-	fmt.Println("password:", password)
-	fmt.Println("group:", group)
-	fmt.Println("hostname:", hostname)
-	fmt.Println("susemgr:", susemgr)
-	fmt.Println("task:", task)
+	if verbose {
+		fmt.Println("verbose: ", verbose)
+		fmt.Println("user:", user)
+		fmt.Println("password:", password)
+		fmt.Println("group:", group)
+		fmt.Println("hostname:", hostname)
+		fmt.Println("susemgr:", susemgr)
+		fmt.Println("task:", task)
+	}
 
-	sessioncookie := webapi.Login(user, password, susemgr)
-	fmt.Fprintf(os.Stdout, "\nSession Cookie %s\n", sessioncookie)
+	sessioncookie := webapi.Login(user, password, susemgr, verbose)
+	if verbose {
+		fmt.Fprintf(os.Stdout, "DEBUG: Session Cookie %s\n", sessioncookie)
+	}
 
 	if task == "add" {
-		result, err := webapi.AddSystem(sessioncookie, susemgr, hostname, group)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "An error occured, %v\n", err)
-			fmt.Printf("Got result: %v\n", result)
+		result := webapi.AddSystem(sessioncookie, susemgr, hostname, group, verbose)
+		if result != http.StatusOK {
+			fmt.Fprintf(os.Stderr, "An error occured, got http error %d", result)
 			os.Exit(1)
 		} else {
 			fmt.Printf("Successful add system %s to group %s\n", hostname, group)
-			fmt.Printf("Got result: %v\n", result)
+			fmt.Printf("Got result: %d\n", result)
 		}
 	}
 
+	os.Exit(0)
 }
