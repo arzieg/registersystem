@@ -32,6 +32,13 @@ func init() {
 
 }
 
+func customUsage() {
+	fmt.Fprintf(os.Stderr, "Usage of %s: -u [username] -p [password] -s [URL SUSE Manager] -h [hostname] -g [Group] -t [add|delete] -v [verbose]\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "The program add a system to a SUSE Manager Systemgroup or delete a system from the SUSE Manager.\n\nParameter:\n")
+
+	flag.PrintDefaults()
+}
+
 func isFQDN(hostname string) bool {
 	// Check if hostname is an FQDN
 	return strings.Contains(hostname, ".") &&
@@ -89,6 +96,8 @@ func checkFlag(puser, ppassword, pgroup, phostname, psusemgr, ptask string) bool
 }
 
 func main() {
+	// Replace the default Usage with the custom one
+	flag.Usage = customUsage
 	flag.Parse()
 
 	if !checkFlag(user, password, group, hostname, susemgr, task) {
@@ -116,7 +125,8 @@ func main() {
 		fmt.Fprintf(os.Stdout, "DEBUG: Session Cookie %s\n", sessioncookie)
 	}
 
-	if task == "add" {
+	switch task {
+	case "add":
 		result := webapi.AddSystem(sessioncookie, susemgr, hostname, group, verbose)
 		if result != http.StatusOK {
 			fmt.Fprintf(os.Stderr, "An error occured, got http error %d", result)
@@ -125,6 +135,16 @@ func main() {
 			fmt.Printf("Successful add system %s to group %s\n", hostname, group)
 			fmt.Printf("Got result: %d\n", result)
 		}
+	case "delete":
+		result := webapi.DeleteSystem(sessioncookie, susemgr, hostname, verbose)
+		if result != http.StatusOK {
+			fmt.Fprintf(os.Stderr, "An error occured, got http error %d", result)
+			os.Exit(1)
+		} else {
+			fmt.Printf("Successful delete system %s\n", hostname)
+			fmt.Printf("Got result: %d\n", result)
+		}
+
 	}
 
 	os.Exit(0)
