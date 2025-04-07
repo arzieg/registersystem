@@ -370,25 +370,23 @@ func DeleteSystem(sessioncookie, susemgr, hostname string, verbose bool) int {
 	})
 
 	// Send the request using the HTTP client
-	// client = &http.Client{}
-	// resp, err = client.Do(req)
-	// if err != nil {
-	// 	fmt.Fprintf(os.Stderr, "Error sending request: %v\n", err)
-	// 	os.Exit(1)
-	// }
-	// defer resp.Body.Close()
+	client = &http.Client{}
+	resp, err = client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error sending request: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
 
-	// if verbose {
-	// 	fmt.Fprintf(os.Stderr, "DEBUG: Delete Node: %v\n", resp)
-	// }
+	if verbose {
+		fmt.Fprintf(os.Stderr, "DEBUG: Delete Node: %v\n", resp)
+	}
 
-	// // The API returns 1 on success, otherwise throw an error
-	// if resp.StatusCode != 1 {
-	// 	fmt.Fprintf(os.Stderr, "HTTP Request failed: HTTP %d\n", resp.StatusCode)
-	// 	os.Exit(1)
-	// }
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "HTTP Request failed: HTTP %d\n", resp.StatusCode)
+		os.Exit(1)
+	}
 
-	// return resp.StatusCode
-	return 1
+	return resp.StatusCode
 
 }
