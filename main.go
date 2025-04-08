@@ -122,7 +122,11 @@ func main() {
 
 	sessioncookie := webapi.Login(user, password, susemgr, verbose)
 	if verbose {
-		fmt.Fprintf(os.Stdout, "DEBUG: Session Cookie %s\n", sessioncookie)
+		_, err := fmt.Fprintf(os.Stdout, "DEBUG: Session Cookie %s\n", sessioncookie)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Error writing to stdout:", err)
+		}
+
 	}
 
 	switch task {
