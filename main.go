@@ -12,28 +12,30 @@ import (
 
 var (
 	// commandline flags
-	verbose  bool
-	user     string
-	password string
-	group    string
-	hostname string
-	susemgr  string
-	task     string
+	verbose      bool
+	roleID       string
+	secretID     string
+	group        string
+	hostname     string
+	susemgr      string
+	vaultAddress string
+	task         string
 )
 
 func init() {
 	flag.BoolVar(&verbose, "v", false, "verbose output")
-	flag.StringVar(&user, "u", "", "username")
-	flag.StringVar(&password, "p", "", "password")
+	flag.StringVar(&roleID, "r", "", "roleID")
+	flag.StringVar(&secretID, "s", "", "secretID")
 	flag.StringVar(&group, "g", "", "SUSE Manager Group")
 	flag.StringVar(&hostname, "h", "", "Hostname")
-	flag.StringVar(&susemgr, "s", "", "URL SUSE-Manager")
+	flag.StringVar(&susemgr, "m", "", "URL SUSE-Manager")
+	flag.StringVar(&vaultAddress, "a", "", "URL vault address")
 	flag.StringVar(&task, "t", "", "task [add | delete]")
 
 }
 
 func customUsage() {
-	fmt.Fprintf(os.Stderr, "Usage of %s: -u [username] -p [password] -s [URL SUSE Manager] -h [hostname] -g [Group] -t [add|delete] -v [verbose]\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "Usage of %s: -r [roleID] -s [secretID] -a [URL Vault] -m [URL SUSE Manager] -h [hostname] -g [Group] -t [add|delete] -v [verbose]\n\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "The program add a system to a SUSE Manager Systemgroup or delete a system from the SUSE Manager.\n\nParameter:\n")
 
 	flag.PrintDefaults()
@@ -60,20 +62,20 @@ func getTask(line string) string {
 	}
 }
 
-func checkFlag(puser, ppassword, pgroup, phostname, psusemgr, ptask string) bool {
+func checkFlag(proleID, psecretID, pgroup, phostname, psusemgr, pvault, ptask string) bool {
 
 	if !isFQDN(phostname) || isEmpty(phostname) {
 		fmt.Fprintf(os.Stderr, "Please enter the FQDN Hostname.")
 		return false
 	}
 
-	if isEmpty(puser) {
-		fmt.Fprintf(os.Stderr, "Please enter a username.")
+	if isEmpty(proleID) {
+		fmt.Fprintf(os.Stderr, "Please enter a roleID.")
 		return false
 	}
 
-	if isEmpty(ppassword) {
-		fmt.Fprintf(os.Stderr, "Please enter a password.")
+	if isEmpty(psecretID) {
+		fmt.Fprintf(os.Stderr, "Please enter a secretID.")
 		return false
 	}
 
@@ -84,6 +86,11 @@ func checkFlag(puser, ppassword, pgroup, phostname, psusemgr, ptask string) bool
 
 	if isEmpty(psusemgr) {
 		fmt.Fprintf(os.Stderr, "Please enter the URL of the SUSE Manager.")
+		return false
+	}
+
+	if isEmpty(pvault) {
+		fmt.Fprintf(os.Stderr, "Please enter the URL of the Hashicorp Vault.")
 		return false
 	}
 
@@ -100,7 +107,18 @@ func main() {
 	flag.Usage = customUsage
 	flag.Parse()
 
-	if !checkFlag(user, password, group, hostname, susemgr, task) {
+	if verbose {
+		fmt.Println("DEBUG: verbose: ", verbose)
+		fmt.Println("DEBUG: roleID:", roleID)
+		fmt.Println("DEBUG: secretID:", secretID)
+		fmt.Println("DEBUG: group:", group)
+		fmt.Println("DEBUG: hostname:", hostname)
+		fmt.Println("DEBUG: susemgr:", susemgr)
+		fmt.Println("DEBUG: vaultAddress:", vaultAddress)
+		fmt.Println("DEBUG: task:", task)
+	}
+
+	if !checkFlag(roleID, secretID, group, hostname, susemgr, vaultAddress, task) {
 		os.Exit(1)
 	}
 
@@ -110,14 +128,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	secretData, err := webapi.GetVaultSecrets(roleID, secretID, vaultAddress, group, verbose)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error retrieving secret: %v", err)
+	}
+
+	user, ok := secretData["login"].(string)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "Value for 'Login' is not a string\n")
+	}
+	password, ok := secretData["password"].(string)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "Value for 'Password' is not a string\n")
+	}
+	network, ok := secretData["network"].(string)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "Value for 'Network' is not a string\n")
+	}
+
 	if verbose {
-		fmt.Println("verbose: ", verbose)
-		fmt.Println("user:", user)
-		fmt.Println("password:", password)
-		fmt.Println("group:", group)
-		fmt.Println("hostname:", hostname)
-		fmt.Println("susemgr:", susemgr)
-		fmt.Println("task:", task)
+		fmt.Fprintf(os.Stderr, "DEBUG: network = %s\n", network)
 	}
 
 	sessioncookie := webapi.Login(user, password, susemgr, verbose)
