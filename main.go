@@ -161,7 +161,7 @@ func main() {
 
 	switch task {
 	case "add":
-		result := webapi.AddSystem(sessioncookie, susemgr, hostname, group, verbose)
+		result := webapi.AddSystem(sessioncookie, susemgr, hostname, group, network, verbose)
 		if result != http.StatusOK {
 			fmt.Fprintf(os.Stderr, "An error occured, got http error %d", result)
 			os.Exit(1)
@@ -170,7 +170,7 @@ func main() {
 			fmt.Printf("Got result: %d\n", result)
 		}
 	case "delete":
-		result := webapi.DeleteSystem(sessioncookie, susemgr, hostname, verbose)
+		result := webapi.DeleteSystem(sessioncookie, susemgr, hostname, network, verbose)
 		if result != http.StatusOK {
 			fmt.Fprintf(os.Stderr, "An error occured, got http error %d", result)
 			os.Exit(1)

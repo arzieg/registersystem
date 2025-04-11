@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 
@@ -22,9 +23,19 @@ type ResultSystemGetId struct {
 	Name string `json:"name"`
 }
 
+type ResultSystemGetIp struct {
+	Ip   string `json:"ip"`
+	Name string `json:"hostname"`
+}
+
 type ResponseSystemGetId struct {
 	Success bool                `json:"success"`
 	Result  []ResultSystemGetId `json:"result"`
+}
+
+type ResponseSystemGetIp struct {
+	Success bool              `json:"success"`
+	Result  ResultSystemGetIp `json:"result"`
 }
 
 type AddRemoveSystem struct {
@@ -36,6 +47,19 @@ type AddRemoveSystem struct {
 type DeleteSystemType struct {
 	ServerId    int    `json:"sid"`
 	CleanupType string `json:"cleanupType"`
+}
+
+func isSystemInNetwork(pip, pnetwork string) bool {
+	// Define the IP address and the CIDR range
+	ip := net.ParseIP(pip)
+	pnet := fmt.Sprintf("%s/24", pnetwork)
+	_, network, err := net.ParseCIDR(pnet)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing CIDR: %v\n", err)
+		return false
+	}
+	return network.Contains(ip)
+
 }
 
 func getSystemId(sessioncookie, susemgr, hostname string, verbose bool) int {
@@ -95,6 +119,10 @@ func getSystemId(sessioncookie, susemgr, hostname string, verbose bool) int {
 		os.Exit(1)
 	}
 
+	if verbose {
+		fmt.Fprintf(os.Stderr, "DEBUG: Got resp.Body = %s\n", string(bodyBytes))
+	}
+
 	// Unmarshal the JSON response into the struct
 	var rsp ResponseSystemGetId
 	err = json.Unmarshal(bodyBytes, &rsp)
@@ -115,6 +143,88 @@ func getSystemId(sessioncookie, susemgr, hostname string, verbose bool) int {
 	}
 
 	return foundId
+
+}
+
+func getSystemIp(sessioncookie, susemgr string, id int, verbose bool) string {
+
+	// Define the API endpoint
+	apiURL := fmt.Sprintf("%s%s", susemgr, "/rhn/manager/api")
+	if verbose {
+		fmt.Fprintf(os.Stderr, "DEBUG: apiURL =  %s\n", apiURL)
+	}
+
+	/*
+	 check if system is registered
+	*/
+	apiMethodGetSystemIp := fmt.Sprintf("%s%s%d", apiURL, "/system/getNetwork?sid=", id)
+	if verbose {
+		fmt.Fprintf(os.Stderr, "DEBUG: apiMethod = %s\n", apiMethodGetSystemIp)
+	}
+
+	// Create a new HTTP request
+	req, err := http.NewRequest(http.MethodGet, apiMethodGetSystemIp, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating request to get IP from system, error: %s\n", err)
+		os.Exit(1)
+	}
+
+	// Add headers
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{
+		Name:  "pxt-session-cookie",
+		Value: sessioncookie,
+	})
+
+	// Send the HTTP request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error sending request: %s\n", err)
+		os.Exit(1)
+	}
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, "Error closing response body:", err)
+		}
+	}()
+
+	// Check HTTP status
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "HTTP Request failed: HTTP %d\n", resp.StatusCode)
+		os.Exit(1)
+	}
+
+	// Read response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading http response: %s\n", err)
+		os.Exit(1)
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "DEBUG: Got resp.Body = %s\n", string(bodyBytes))
+	}
+	// Unmarshal the JSON response into the struct
+	var rsp ResponseSystemGetIp
+	err = json.Unmarshal(bodyBytes, &rsp)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error unmarshaling JSON: %s\n", err)
+		os.Exit(1)
+	}
+
+	// Extract and print all fields
+	foundIp := rsp.Result.Ip
+
+	if foundIp == "" {
+		fmt.Fprintf(os.Stderr, "ID: %d not found in SUSE Manager on %s\n", id, susemgr)
+		os.Exit(1)
+	}
+
+	fmt.Fprintf(os.Stderr, "DEBUG: Found IP = %s\n", foundIp)
+
+	return foundIp
 
 }
 
@@ -207,7 +317,7 @@ func Login(username, password, susemgr string, verbose bool) string {
 	return sessioncookie
 }
 
-func AddSystem(sessioncookie, susemgr, hostname, group string, verbose bool) int {
+func AddSystem(sessioncookie, susemgr, hostname, group, network string, verbose bool) int {
 
 	if verbose {
 		fmt.Fprintf(os.Stderr, "DEBUG: Enter function AddSystem\n")
@@ -222,6 +332,20 @@ func AddSystem(sessioncookie, susemgr, hostname, group string, verbose bool) int
 
 	if foundId == 0 {
 		fmt.Fprintf(os.Stderr, "Did not find the system in SUSE Manager.\n")
+		os.Exit(1)
+	}
+
+	foundIp := getSystemIp(sessioncookie, susemgr, foundId, verbose)
+
+	if foundIp == "" {
+		fmt.Fprintf(os.Stderr, "Did not find the system ID %d in SUSE Manager.\n", foundId)
+		os.Exit(1)
+	}
+
+	isValid := isSystemInNetwork(foundIp, network)
+
+	if !isValid {
+		fmt.Fprintf(os.Stderr, "System cannot be added. The system does not belong to the permitted network!\n")
 		os.Exit(1)
 	}
 
@@ -295,7 +419,7 @@ func AddSystem(sessioncookie, susemgr, hostname, group string, verbose bool) int
 
 }
 
-func DeleteSystem(sessioncookie, susemgr, hostname string, verbose bool) int {
+func DeleteSystem(sessioncookie, susemgr, hostname, network string, verbose bool) int {
 
 	if verbose {
 		fmt.Fprintf(os.Stderr, "DEBUG: Enter function DeleteSystem\n")
@@ -311,6 +435,20 @@ func DeleteSystem(sessioncookie, susemgr, hostname string, verbose bool) int {
 
 	if foundId == 0 {
 		fmt.Fprintf(os.Stderr, "Did not find the system in SUSE Manager.\n")
+		os.Exit(1)
+	}
+
+	foundIp := getSystemIp(sessioncookie, susemgr, foundId, verbose)
+
+	if foundIp == "" {
+		fmt.Fprintf(os.Stderr, "Did not find the system ID %d in SUSE Manager.\n", foundId)
+		os.Exit(1)
+	}
+
+	isValid := isSystemInNetwork(foundIp, network)
+
+	if !isValid {
+		fmt.Fprintf(os.Stderr, "%s cannot be deleted. The system does not belong to the permitted network of the group!\n", hostname)
 		os.Exit(1)
 	}
 
