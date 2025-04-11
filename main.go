@@ -1,5 +1,13 @@
 package main
 
+/*
+ Read vault roleID: vault read auth/approle/role/<my-approle>/role-id
+ Create roleID: write -force auth/approle/role/<my-approle>
+ Create secretID write -f auth/approle/role/<my-approle>/secret-id
+
+
+*/
+
 import (
 	"flag"
 	"fmt"
