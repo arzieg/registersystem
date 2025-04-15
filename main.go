@@ -4,8 +4,6 @@ package main
  Read vault roleID: vault read auth/approle/role/<my-approle>/role-id
  Create roleID: write -force auth/approle/role/<my-approle>
  Create secretID write -f auth/approle/role/<my-approle>/secret-id
-
-
 */
 
 import (
@@ -15,7 +13,7 @@ import (
 	"os"
 	"strings"
 
-	"systemmanager/webapi"
+	"registersystem/webapi"
 )
 
 var (
@@ -124,6 +122,12 @@ func main() {
 		fmt.Println("DEBUG: susemgr:", susemgr)
 		fmt.Println("DEBUG: vaultAddress:", vaultAddress)
 		fmt.Println("DEBUG: task:", task)
+	}
+
+	// no args
+	if len(os.Args) == 1 {
+		customUsage()
+		os.Exit(1)
 	}
 
 	if !checkFlag(roleID, secretID, group, hostname, susemgr, vaultAddress, task) {

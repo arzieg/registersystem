@@ -1,4 +1,4 @@
-module systemmanager
+module registersystem
 
 go 1.21.13
 
