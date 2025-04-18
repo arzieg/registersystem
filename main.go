@@ -6,6 +6,14 @@ package main
  Create secretID write -f auth/approle/role/<my-approle>/secret-id
 */
 
+/*
+TODO:
+  Wenn URL nicht erreichbar, bricht das Programm mit einer Panic ab
+
+  Error logging in with AppRole: Put "http://vault.example.com:8443/v1/auth/approle/login": dial tcp: lookup vault.example.com: no such hostAuthentication failed: no token returnedpanic: runtime error: invalid memory address or nil pointer dereference
+  [signal SIGSEGV: segmentation violation code=0x1 addr=0x50 pc=0x6f5ea0]
+*/
+
 import (
 	"flag"
 	"fmt"
