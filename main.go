@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -28,16 +29,27 @@ var (
 	task         string
 )
 
-func init() {
-	flag.BoolVar(&verbose, "v", false, "verbose output")
-	flag.StringVar(&roleID, "r", "", "roleID")
-	flag.StringVar(&secretID, "s", "", "secretID")
-	flag.StringVar(&group, "g", "", "SUSE Manager Group")
-	flag.StringVar(&hostname, "h", "", "Hostname")
-	flag.StringVar(&susemgr, "m", "", "URL SUSE-Manager")
-	flag.StringVar(&vaultAddress, "a", "", "URL vault address")
-	flag.StringVar(&task, "t", "", "task [add | delete]")
+// func init() {
+// 	flag.BoolVar(&verbose, "v", false, "verbose output")
+// 	flag.StringVar(&roleID, "r", "", "roleID")
+// 	flag.StringVar(&secretID, "s", "", "secretID")
+// 	flag.StringVar(&group, "g", "", "SUSE Manager Group")
+// 	flag.StringVar(&hostname, "h", "", "Hostname")
+// 	flag.StringVar(&susemgr, "m", "", "URL SUSE-Manager")
+// 	flag.StringVar(&vaultAddress, "a", "", "URL vault address")
+// 	flag.StringVar(&task, "t", "", "task [add | delete]")
 
+// }
+
+func registerFlags(fs *flag.FlagSet) {
+	fs.StringVar(&roleID, "r", "", "Role ID")
+	fs.StringVar(&secretID, "s", "", "Secret ID")
+	fs.StringVar(&group, "g", "", "SUSE Manager Group")
+	fs.StringVar(&hostname, "h", "", "Hostname")
+	fs.StringVar(&susemgr, "m", "", "SUSE Manager URL")
+	fs.StringVar(&vaultAddress, "a", "", "Vault Address")
+	fs.StringVar(&task, "t", "", "Task [add | delete]")
+	fs.BoolVar(&verbose, "v", false, "Verbose output")
 }
 
 func customUsage() {
@@ -51,6 +63,15 @@ func isFQDN(hostname string) bool {
 	// Check if hostname is an FQDN
 	return strings.Contains(hostname, ".") &&
 		!strings.HasSuffix(hostname, ".")
+}
+
+func isURL(line string) bool {
+	u, err := url.ParseRequestURI(line)
+	//fmt.Printf("Get URI: %s %v\n", u, err)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return true
 }
 
 func isEmpty(line string) bool {
@@ -72,6 +93,16 @@ func checkFlag(proleID, psecretID, pgroup, phostname, psusemgr, pvault, ptask st
 
 	if !isFQDN(phostname) || isEmpty(phostname) {
 		fmt.Fprintf(os.Stderr, "Please enter the FQDN Hostname.")
+		return false
+	}
+
+	if !isURL(pvault) || isEmpty(pvault) {
+		fmt.Fprintf(os.Stderr, "Please enter a valid URL for vault.")
+		return false
+	}
+
+	if !isURL(psusemgr) || isEmpty(psusemgr) {
+		fmt.Fprintf(os.Stderr, "Please enter a valid URL for SUSE Manager.")
 		return false
 	}
 
@@ -110,6 +141,7 @@ func checkFlag(proleID, psecretID, pgroup, phostname, psusemgr, pvault, ptask st
 
 func main() {
 	// Replace the default Usage with the custom one
+	registerFlags(flag.CommandLine)
 	flag.Usage = customUsage
 	flag.Parse()
 
