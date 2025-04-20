@@ -62,7 +62,7 @@ func isSystemInNetwork(pip, pnetwork string) bool {
 
 }
 
-func getSystemId(sessioncookie, susemgr, hostname string, verbose bool) int {
+func getSystemID(sessioncookie, susemgr, hostname string, verbose bool) int {
 
 	// Define the API endpoint
 	apiURL := fmt.Sprintf("%s%s", susemgr, "/rhn/manager/api")
@@ -73,13 +73,13 @@ func getSystemId(sessioncookie, susemgr, hostname string, verbose bool) int {
 	/*
 	 check if system is registered
 	*/
-	apiMethodGetSystemId := fmt.Sprintf("%s%s%s", apiURL, "/system/getId?name=", hostname)
+	apiMethodgetSystemID := fmt.Sprintf("%s%s%s", apiURL, "/system/getId?name=", hostname)
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: apiMethod = %s\n", apiMethodGetSystemId)
+		fmt.Fprintf(os.Stderr, "DEBUG: apiMethod = %s\n", apiMethodgetSystemID)
 	}
 
 	// Create a new HTTP request
-	req, err := http.NewRequest(http.MethodGet, apiMethodGetSystemId, nil)
+	req, err := http.NewRequest(http.MethodGet, apiMethodgetSystemID, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating request to get hostname, error: %s\n", err)
 		os.Exit(1)
@@ -132,21 +132,21 @@ func getSystemId(sessioncookie, susemgr, hostname string, verbose bool) int {
 	}
 
 	// Extract and print all fields
-	var foundId int
+	var foundID int
 	for _, r := range rsp.Result {
-		foundId = r.Id
+		foundID = r.Id
 	}
 
-	if foundId == 0 {
+	if foundID == 0 {
 		fmt.Fprintf(os.Stderr, "Host: %s not found in SUSE Manager on %s\n", hostname, susemgr)
 		os.Exit(1)
 	}
 
-	return foundId
+	return foundID
 
 }
 
-func getSystemIp(sessioncookie, susemgr string, id int, verbose bool) string {
+func getSystemIP(sessioncookie, susemgr string, id int, verbose bool) string {
 
 	// Define the API endpoint
 	apiURL := fmt.Sprintf("%s%s", susemgr, "/rhn/manager/api")
@@ -157,13 +157,13 @@ func getSystemIp(sessioncookie, susemgr string, id int, verbose bool) string {
 	/*
 	 check if system is registered
 	*/
-	apiMethodGetSystemIp := fmt.Sprintf("%s%s%d", apiURL, "/system/getNetwork?sid=", id)
+	apiMethodgetSystemIP := fmt.Sprintf("%s%s%d", apiURL, "/system/getNetwork?sid=", id)
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: apiMethod = %s\n", apiMethodGetSystemIp)
+		fmt.Fprintf(os.Stderr, "DEBUG: apiMethod = %s\n", apiMethodgetSystemIP)
 	}
 
 	// Create a new HTTP request
-	req, err := http.NewRequest(http.MethodGet, apiMethodGetSystemIp, nil)
+	req, err := http.NewRequest(http.MethodGet, apiMethodgetSystemIP, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating request to get IP from system, error: %s\n", err)
 		os.Exit(1)
@@ -215,19 +215,20 @@ func getSystemIp(sessioncookie, susemgr string, id int, verbose bool) string {
 	}
 
 	// Extract and print all fields
-	foundIp := rsp.Result.Ip
+	foundIP := rsp.Result.Ip
 
-	if foundIp == "" {
+	if foundIP == "" {
 		fmt.Fprintf(os.Stderr, "ID: %d not found in SUSE Manager on %s\n", id, susemgr)
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, "DEBUG: Found IP = %s\n", foundIp)
+	fmt.Fprintf(os.Stderr, "DEBUG: Found IP = %s\n", foundIP)
 
-	return foundIp
+	return foundIP
 
 }
 
+// Login try to login to SUSE Manager. Username, Password are get from Hashicorp Vault.
 func Login(username, password, susemgr string, verbose bool) string {
 
 	if verbose {
@@ -317,6 +318,7 @@ func Login(username, password, susemgr string, verbose bool) string {
 	return sessioncookie
 }
 
+// AddSystem add a System to a SUSE Manager SystemGroup.
 func AddSystem(sessioncookie, susemgr, hostname, group, network string, verbose bool) int {
 
 	if verbose {
@@ -328,21 +330,21 @@ func AddSystem(sessioncookie, susemgr, hostname, group, network string, verbose 
 	/*
 	 add System to Group
 	*/
-	foundId := getSystemId(sessioncookie, susemgr, hostname, verbose)
+	foundID := getSystemID(sessioncookie, susemgr, hostname, verbose)
 
-	if foundId == 0 {
+	if foundID == 0 {
 		fmt.Fprintf(os.Stderr, "Did not find the system in SUSE Manager.\n")
 		os.Exit(1)
 	}
 
-	foundIp := getSystemIp(sessioncookie, susemgr, foundId, verbose)
+	foundIP := getSystemIP(sessioncookie, susemgr, foundID, verbose)
 
-	if foundIp == "" {
-		fmt.Fprintf(os.Stderr, "Did not find the system ID %d in SUSE Manager.\n", foundId)
+	if foundIP == "" {
+		fmt.Fprintf(os.Stderr, "Did not find the system ID %d in SUSE Manager.\n", foundID)
 		os.Exit(1)
 	}
 
-	isValid := isSystemInNetwork(foundIp, network)
+	isValid := isSystemInNetwork(foundIP, network)
 
 	if !isValid {
 		fmt.Fprintf(os.Stderr, "System cannot be added. The system does not belong to the permitted network!\n")
@@ -363,7 +365,7 @@ func AddSystem(sessioncookie, susemgr, hostname, group, network string, verbose 
 	// Create the authentication request payload
 	AddRemoveSystemPayload := AddRemoveSystem{
 		SystemGroupName: group,
-		ServerIds:       []int{foundId},
+		ServerIds:       []int{foundID},
 		Add:             true,
 	}
 
@@ -419,6 +421,9 @@ func AddSystem(sessioncookie, susemgr, hostname, group, network string, verbose 
 
 }
 
+// DeleteSystem delete a System from the SUSE Manager . This implies, that it is also deleted from the SUSE Manager SystemGroup.
+// To ensure, that DeleteSystem could not delete other Systems from o differen IP range, the procedure check if the IP belongs
+// to the IP range we get from hashicorp vault.
 func DeleteSystem(sessioncookie, susemgr, hostname, network string, verbose bool) int {
 
 	if verbose {
@@ -431,21 +436,21 @@ func DeleteSystem(sessioncookie, susemgr, hostname, network string, verbose bool
 	 delete System
 	*/
 
-	foundId := getSystemId(sessioncookie, susemgr, hostname, verbose)
+	foundID := getSystemID(sessioncookie, susemgr, hostname, verbose)
 
-	if foundId == 0 {
+	if foundID == 0 {
 		fmt.Fprintf(os.Stderr, "Did not find the system in SUSE Manager.\n")
 		os.Exit(1)
 	}
 
-	foundIp := getSystemIp(sessioncookie, susemgr, foundId, verbose)
+	foundIP := getSystemIP(sessioncookie, susemgr, foundID, verbose)
 
-	if foundIp == "" {
-		fmt.Fprintf(os.Stderr, "Did not find the system ID %d in SUSE Manager.\n", foundId)
+	if foundIP == "" {
+		fmt.Fprintf(os.Stderr, "Did not find the system ID %d in SUSE Manager.\n", foundID)
 		os.Exit(1)
 	}
 
-	isValid := isSystemInNetwork(foundIp, network)
+	isValid := isSystemInNetwork(foundIP, network)
 
 	if !isValid {
 		fmt.Fprintf(os.Stderr, "%s cannot be deleted. The system does not belong to the permitted network of the group!\n", hostname)
@@ -465,7 +470,7 @@ func DeleteSystem(sessioncookie, susemgr, hostname, network string, verbose bool
 
 	// Create the authentication request payload
 	DeleteSystemPayload := DeleteSystemType{
-		ServerId:    foundId,
+		ServerId:    foundID,
 		CleanupType: "FORCE_DELETE",
 	}
 

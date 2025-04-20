@@ -46,7 +46,7 @@ func setupTestServer(t *testing.T, path string, response interface{}) *httptest.
 	return httptest.NewServer(handler)
 }
 
-func TestGetSystemId(t *testing.T) {
+func TestgetSystemID(t *testing.T) {
 	resp := ResponseSystemGetId{
 		Success: true,
 		Result:  []ResultSystemGetId{{Id: 42, Name: "testhost"}},
@@ -60,17 +60,17 @@ func TestGetSystemId(t *testing.T) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			t.Errorf("getSystemId panicked: %v", r)
+			t.Errorf("getSystemID panicked: %v", r)
 		}
 	}()
 
-	id := getSystemId("dummy-cookie", server.URL, "testhost", false)
+	id := getSystemID("dummy-cookie", server.URL, "testhost", false)
 	if id != 42 {
 		t.Errorf("Expected id 42, got %d", id)
 	}
 }
 
-func TestGetSystemIp(t *testing.T) {
+func TestgetSystemIP(t *testing.T) {
 	resp := ResponseSystemGetIp{
 		Success: true,
 		Result:  ResultSystemGetIp{Ip: "192.168.1.10", Name: "testhost"},
@@ -84,11 +84,11 @@ func TestGetSystemIp(t *testing.T) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			t.Errorf("getSystemIp panicked: %v", r)
+			t.Errorf("getSystemIP panicked: %v", r)
 		}
 	}()
 
-	ip := getSystemIp("dummy-cookie", server.URL, 42, false)
+	ip := getSystemIP("dummy-cookie", server.URL, 42, false)
 	if ip != "192.168.1.10" {
 		t.Errorf("Expected ip 192.168.1.10, got %s", ip)
 	}
