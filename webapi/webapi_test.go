@@ -46,7 +46,7 @@ func setupTestServer(t *testing.T, path string, response interface{}) *httptest.
 	return httptest.NewServer(handler)
 }
 
-func TestgetSystemID(t *testing.T) {
+func TestGetSystemID(t *testing.T) {
 	resp := ResponseSystemGetId{
 		Success: true,
 		Result:  []ResultSystemGetId{{Id: 42, Name: "testhost"}},
@@ -70,7 +70,7 @@ func TestgetSystemID(t *testing.T) {
 	}
 }
 
-func TestgetSystemIP(t *testing.T) {
+func TestGetSystemIP(t *testing.T) {
 	resp := ResponseSystemGetIp{
 		Success: true,
 		Result:  ResultSystemGetIp{Ip: "192.168.1.10", Name: "testhost"},
