@@ -13,6 +13,9 @@ import (
 	vault "github.com/hashicorp/vault/api"
 )
 
+// Patch osExit for testing
+var osExit = os.Exit
+
 type AuthRequest struct {
 	Login    string `json:"login"`
 	Password string `json:"password"`
@@ -49,7 +52,7 @@ type DeleteSystemType struct {
 	CleanupType string `json:"cleanupType"`
 }
 
-func isSystemInNetwork(pip, pnetwork string) bool {
+var isSystemInNetwork = func(pip, pnetwork string) bool {
 	// Define the IP address and the CIDR range
 	ip := net.ParseIP(pip)
 	pnet := fmt.Sprintf("%s/24", pnetwork)
@@ -62,7 +65,7 @@ func isSystemInNetwork(pip, pnetwork string) bool {
 
 }
 
-func getSystemID(sessioncookie, susemgr, hostname string, verbose bool) int {
+var getSystemID = func(sessioncookie, susemgr, hostname string, verbose bool) int {
 
 	// Define the API endpoint
 	apiURL := fmt.Sprintf("%s%s", susemgr, "/rhn/manager/api")
@@ -82,7 +85,7 @@ func getSystemID(sessioncookie, susemgr, hostname string, verbose bool) int {
 	req, err := http.NewRequest(http.MethodGet, apiMethodgetSystemID, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating request to get hostname, error: %s\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Add headers
@@ -97,7 +100,7 @@ func getSystemID(sessioncookie, susemgr, hostname string, verbose bool) int {
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error sending request: %s\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	defer func() {
@@ -109,14 +112,14 @@ func getSystemID(sessioncookie, susemgr, hostname string, verbose bool) int {
 	// Check HTTP status
 	if resp.StatusCode != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "HTTP Request failed: HTTP %d\n", resp.StatusCode)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Read response body
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading http response: %s\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if verbose {
@@ -128,7 +131,7 @@ func getSystemID(sessioncookie, susemgr, hostname string, verbose bool) int {
 	err = json.Unmarshal(bodyBytes, &rsp)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error unmarshaling JSON: %s\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Extract and print all fields
@@ -139,14 +142,14 @@ func getSystemID(sessioncookie, susemgr, hostname string, verbose bool) int {
 
 	if foundID == 0 {
 		fmt.Fprintf(os.Stderr, "Host: %s not found in SUSE Manager on %s\n", hostname, susemgr)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	return foundID
 
 }
 
-func getSystemIP(sessioncookie, susemgr string, id int, verbose bool) string {
+var getSystemIP = func(sessioncookie, susemgr string, id int, verbose bool) string {
 
 	// Define the API endpoint
 	apiURL := fmt.Sprintf("%s%s", susemgr, "/rhn/manager/api")
@@ -166,7 +169,7 @@ func getSystemIP(sessioncookie, susemgr string, id int, verbose bool) string {
 	req, err := http.NewRequest(http.MethodGet, apiMethodgetSystemIP, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating request to get IP from system, error: %s\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Add headers
@@ -181,7 +184,7 @@ func getSystemIP(sessioncookie, susemgr string, id int, verbose bool) string {
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error sending request: %s\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	defer func() {
@@ -193,14 +196,14 @@ func getSystemIP(sessioncookie, susemgr string, id int, verbose bool) string {
 	// Check HTTP status
 	if resp.StatusCode != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "HTTP Request failed: HTTP %d\n", resp.StatusCode)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Read response body
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading http response: %s\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if verbose {
@@ -211,7 +214,7 @@ func getSystemIP(sessioncookie, susemgr string, id int, verbose bool) string {
 	err = json.Unmarshal(bodyBytes, &rsp)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error unmarshaling JSON: %s\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Extract and print all fields
@@ -219,7 +222,7 @@ func getSystemIP(sessioncookie, susemgr string, id int, verbose bool) string {
 
 	if foundIP == "" {
 		fmt.Fprintf(os.Stderr, "ID: %d not found in SUSE Manager on %s\n", id, susemgr)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	fmt.Fprintf(os.Stderr, "DEBUG: Found IP = %s\n", foundIP)
@@ -260,14 +263,14 @@ func Login(username, password, susemgr string, verbose bool) string {
 	payloadBytes, err := json.Marshal(authPayload)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error marshalling payload: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Create an HTTP POST request
 	req, err := http.NewRequest("POST", apiMethod, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -276,7 +279,7 @@ func Login(username, password, susemgr string, verbose bool) string {
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error sending request: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	defer func() {
@@ -308,7 +311,7 @@ func Login(username, password, susemgr string, verbose bool) string {
 	_, err = responseBody.ReadFrom(resp.Body)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Got error to read from respone body.\n")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if verbose {
@@ -334,21 +337,21 @@ func AddSystem(sessioncookie, susemgr, hostname, group, network string, verbose 
 
 	if foundID == 0 {
 		fmt.Fprintf(os.Stderr, "Did not find the system in SUSE Manager.\n")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	foundIP := getSystemIP(sessioncookie, susemgr, foundID, verbose)
 
 	if foundIP == "" {
 		fmt.Fprintf(os.Stderr, "Did not find the system ID %d in SUSE Manager.\n", foundID)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	isValid := isSystemInNetwork(foundIP, network)
 
 	if !isValid {
 		fmt.Fprintf(os.Stderr, "System cannot be added. The system does not belong to the permitted network!\n")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Define the API endpoint
@@ -373,7 +376,7 @@ func AddSystem(sessioncookie, susemgr, hostname, group, network string, verbose 
 	payloadBytes, err := json.Marshal(AddRemoveSystemPayload)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error marshalling payload: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if verbose {
@@ -384,7 +387,7 @@ func AddSystem(sessioncookie, susemgr, hostname, group, network string, verbose 
 	req, err := http.NewRequest(http.MethodPost, apiMethodAddOrRemoveSystems, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Add headers
@@ -399,7 +402,7 @@ func AddSystem(sessioncookie, susemgr, hostname, group, network string, verbose 
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error sending request: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	defer func() {
@@ -414,7 +417,7 @@ func AddSystem(sessioncookie, susemgr, hostname, group, network string, verbose 
 
 	if resp.StatusCode != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "HTTP Request failed: HTTP %d\n", resp.StatusCode)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	return resp.StatusCode
@@ -440,21 +443,21 @@ func DeleteSystem(sessioncookie, susemgr, hostname, network string, verbose bool
 
 	if foundID == 0 {
 		fmt.Fprintf(os.Stderr, "Did not find the system in SUSE Manager.\n")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	foundIP := getSystemIP(sessioncookie, susemgr, foundID, verbose)
 
 	if foundIP == "" {
 		fmt.Fprintf(os.Stderr, "Did not find the system ID %d in SUSE Manager.\n", foundID)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	isValid := isSystemInNetwork(foundIP, network)
 
 	if !isValid {
 		fmt.Fprintf(os.Stderr, "%s cannot be deleted. The system does not belong to the permitted network of the group!\n", hostname)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Define the API endpoint
@@ -478,7 +481,7 @@ func DeleteSystem(sessioncookie, susemgr, hostname, network string, verbose bool
 	payloadBytes, err := json.Marshal(DeleteSystemPayload)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error marshalling payload: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if verbose {
@@ -489,7 +492,7 @@ func DeleteSystem(sessioncookie, susemgr, hostname, network string, verbose bool
 	req, err := http.NewRequest(http.MethodPost, apiDeleteSystems, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Add headers
@@ -504,7 +507,7 @@ func DeleteSystem(sessioncookie, susemgr, hostname, network string, verbose bool
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error sending request: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	defer func() {
@@ -519,7 +522,7 @@ func DeleteSystem(sessioncookie, susemgr, hostname, network string, verbose bool
 
 	if resp.StatusCode != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "HTTP Request failed: HTTP %d\n", resp.StatusCode)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	return resp.StatusCode
