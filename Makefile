@@ -3,7 +3,11 @@ APP_NAME := registersystem
 SRC := $(shell find . -type f -name '*.go')
 
 # Default target
-all: build
+all: release
+
+# create release
+release: $(SRC)
+	CGO_ENABLED=0 go build -ldflags "-s -w" -o cmd/$(APP_NAME)
 
 # Build the Go program
 build: $(SRC)
