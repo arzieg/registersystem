@@ -66,27 +66,28 @@ func TestGetTask(t *testing.T) {
 }
 
 func TestCheckFlag(t *testing.T) {
-	valid := checkFlag("token", "group", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "http://vault", "add")
+	valid := checkFlag("role", "secret", "group", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "http://vault", "add")
 
 	if !valid {
 		t.Error("Expected valid flags to pass checkFlag")
 	}
 
 	invalids := []struct {
-		ptoken, pgroup, pgrouppassword, psumauser, psumapassword, psusemgr, pvault, ptask string
+		proleID, psecretID, pgroup, pgrouppassword, psumauser, psumapassword, psusemgr, pvault, ptask string
 	}{
-		{"", "group", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "http://vault", "add"},
-		{"token", "", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "http://vault", "add"},
-		{"token", "group", "", "sumauser", "sumapassword", "http://susemgr", "http://vault", "add"},
-		{"token", "group", "grouppassword", "", "sumapassword", "http://susemgr", "http://vault", "add"},
-		{"token", "group", "grouppassword", "sumauser", "", "http://susemgr", "http://vault", "add"},
-		{"token", "group", "grouppassword", "sumauser", "sumapassword", "", "http://vault", "add"},
-		{"token", "group", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "", "add"},
-		{"token", "group", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "http://vault", ""},
+		{"", "secret", "group", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "http://vault", "add"},
+		{"role", "", "group", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "http://vault", "add"},
+		{"role", "secret", "", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "http://vault", "add"},
+		{"role", "secret", "group", "", "sumauser", "sumapassword", "http://susemgr", "http://vault", "add"},
+		{"role", "secret", "group", "grouppassword", "", "sumapassword", "http://susemgr", "http://vault", "add"},
+		{"role", "secret", "group", "grouppassword", "sumauser", "", "http://susemgr", "http://vault", "add"},
+		{"role", "secret", "group", "grouppassword", "sumauser", "sumapassword", "", "http://vault", "add"},
+		{"role", "secret", "group", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "", "add"},
+		{"role", "secret", "group", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "http://vault", ""},
 	}
 
 	for i, inv := range invalids {
-		if checkFlag(inv.ptoken, inv.pgroup, inv.pgrouppassword, inv.psumauser, inv.psumapassword, inv.psusemgr, inv.pvault, inv.ptask) {
+		if checkFlag(inv.proleID, inv.psecretID, inv.pgroup, inv.pgrouppassword, inv.psumauser, inv.psumapassword, inv.psusemgr, inv.pvault, inv.ptask) {
 			t.Errorf("Expected checkFlag to fail for invalid input set #%d: %+v", i, inv)
 		}
 	}
@@ -99,7 +100,8 @@ func TestFlagParsing(t *testing.T) {
 
 	os.Args = []string{
 		"cmd",
-		"-o", "token",
+		"-r", "roleid",
+		"-s", "secretid",
 		"-g", "group",
 		"-d", "grouppassword",
 		"-u", "sumauser",
@@ -119,8 +121,11 @@ func TestFlagParsing(t *testing.T) {
 	if !verbose {
 		t.Error("Expected verbose to be true")
 	}
-	if token != "token" {
-		t.Errorf("Expected token to be 'token', got %q", token)
+	if roleID != "roleid" {
+		t.Errorf("Expected roleID to be 'roleid', got %q", roleID)
+	}
+	if secretID != "secretid" {
+		t.Errorf("Expected secretID to be 'secretid', got %q", secretID)
 	}
 	if group != "group" {
 		t.Errorf("Expected group to be 'group', got %q", group)

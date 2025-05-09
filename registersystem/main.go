@@ -20,9 +20,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
-
 	"registersystem/webapi"
+	"strings"
 )
 
 var (

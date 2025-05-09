@@ -17,15 +17,18 @@ TODO:
 import (
 	"flag"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
+	"registersystem/webapi"
 	"strings"
 )
 
 var (
 	// commandline flags
 	verbose       bool
-	token         string
+	roleID        string
+	secretID      string
 	group         string
 	grouppassword string
 	sumauser      string
@@ -36,7 +39,8 @@ var (
 )
 
 func registerFlags(fs *flag.FlagSet) {
-	fs.StringVar(&token, "o", "", "HCV root token")
+	fs.StringVar(&roleID, "r", "", "HCV roleID")
+	fs.StringVar(&secretID, "s", "", "HCV secretID")
 	fs.StringVar(&group, "g", "", "SUSE Manager Group")
 	fs.StringVar(&grouppassword, "d", "", "SUSE Manager Group Password")
 	fs.StringVar(&sumauser, "u", "", "SUSE Manager Admin-User")
@@ -48,7 +52,7 @@ func registerFlags(fs *flag.FlagSet) {
 }
 
 func customUsage() {
-	fmt.Fprintf(os.Stderr, "Usage of %s: -o [HCV token] -a [URL Vault] -m [URL SUSE Manager] -u [SUMA Adminuser] -p [SUMA Adminpassword] -g [SUMA Group] -d [SUMA Grouppassword] -t [add|delete] -v [verbose]\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "Usage of %s: -r [roleID] -s [secretID] -a [URL Vault] -m [URL SUSE Manager] -u [SUMA Adminuser] -p [SUMA Adminpassword] -g [SUMA Group] -d [SUMA Grouppassword] -t [add|delete] -v [verbose]\n\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "The program create or delete an user und policy in HCV and create an user in the SUSE Manager .\n\nParameter:\n")
 
 	flag.PrintDefaults()
@@ -78,10 +82,15 @@ func getTask(line string) string {
 	}
 }
 
-func checkFlag(ptoken, pgroup, pgrouppassword, psumauser, psumapassword, psusemgr, pvault, ptask string) bool {
+func checkFlag(proleID, psecretID, pgroup, pgrouppassword, psumauser, psumapassword, psusemgr, pvault, ptask string) bool {
 
-	if isEmpty(ptoken) {
-		fmt.Fprintf(os.Stderr, "Please enter a token.\n")
+	if isEmpty(proleID) {
+		fmt.Fprintf(os.Stderr, "Please enter a roleID.\n")
+		return false
+	}
+
+	if isEmpty(psecretID) {
+		fmt.Fprintf(os.Stderr, "Please enter a secretID.\n")
 		return false
 	}
 
@@ -141,7 +150,8 @@ func main() {
 
 	if verbose {
 		fmt.Println("DEBUG: verbose: ", verbose)
-		fmt.Println("DEBUG: token:", token)
+		fmt.Println("DEBUG: roleID:", roleID)
+		fmt.Println("DEBUG: secretID:", secretID)
 		fmt.Println("DEBUG: group:", group)
 		fmt.Println("DEBUG: grouppassword:", grouppassword)
 		fmt.Println("DEBUG: sumauser:", sumauser)
@@ -157,7 +167,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if !checkFlag(token, group, grouppassword, sumauser, sumapassword, susemgr, vaultAddress, task) {
+	if !checkFlag(roleID, secretID, group, grouppassword, sumauser, sumapassword, susemgr, vaultAddress, task) {
 		os.Exit(1)
 	}
 
@@ -166,6 +176,27 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Please enter a valid task [add | delete].\n")
 		os.Exit(1)
 	}
+
+	client, err := webapi.VaultLogin(roleID, secretID, vaultAddress)
+	if err != nil {
+		log.Fatalf("Error logging in to Vault: %v", err)
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "DEBUG: client =  %v\n", client)
+	}
+
+	err = webapi.VaultLogout(client)
+	if err != nil {
+		log.Fatalf("Error logout from Vault: %v", err)
+	}
+
+	TODO:
+	 client handler wird zurückgegeben. 
+	  -> create acl policyconst
+	  -> create user
+	  
+
 	/*
 		secretData, err := webapi.GetVaultSecrets(roleID, secretID, vaultAddress, group, verbose)
 		if err != nil {
