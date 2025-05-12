@@ -182,20 +182,35 @@ func main() {
 		log.Fatalf("Error logging in to Vault: %v", err)
 	}
 
-	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: client =  %v\n", client)
+	policyName, err := webapi.VaultCreatePolicy(client, group, verbose)
+	if err != nil {
+		log.Fatalf("error create policy: %v", err)
 	}
 
+	if verbose {
+		log.Printf("DEBUG: policyName = %s\n", policyName)
+		log.Printf("DEBUG: client =  %v\n", client)
+	}
+
+	roleID, secretID, err = webapi.VaultCreateRole(client, group, policyName, verbose)
+	if err != nil {
+		log.Fatalf("error create role: %v", err)
+	}
+
+	/* create policy */
+
+	/* logout */
 	err = webapi.VaultLogout(client)
 	if err != nil {
 		log.Fatalf("Error logout from Vault: %v", err)
 	}
 
-	TODO:
-	 client handler wird zurückgegeben. 
-	  -> create acl policyconst
-	  -> create user
-	  
+	/*
+		TODO:
+		 client handler wird zurückgegeben.
+		  -> create acl policyconst
+		  -> create user
+	*/
 
 	/*
 		secretData, err := webapi.GetVaultSecrets(roleID, secretID, vaultAddress, group, verbose)
