@@ -66,28 +66,26 @@ func TestGetTask(t *testing.T) {
 }
 
 func TestCheckFlag(t *testing.T) {
-	valid := checkFlag("role", "secret", "group", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "http://vault", "add")
+	valid := checkFlag("role", "secret", "group", "grouppassword", "127.0.0.0", "http://vault", "add")
 
 	if !valid {
 		t.Error("Expected valid flags to pass checkFlag")
 	}
 
 	invalids := []struct {
-		proleID, psecretID, pgroup, pgrouppassword, psumauser, psumapassword, psusemgr, pvault, ptask string
+		proleID, psecretID, pgroup, pgrouppassword, pnetwork, pvault, ptask string
 	}{
-		{"", "secret", "group", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "http://vault", "add"},
-		{"role", "", "group", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "http://vault", "add"},
-		{"role", "secret", "", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "http://vault", "add"},
-		{"role", "secret", "group", "", "sumauser", "sumapassword", "http://susemgr", "http://vault", "add"},
-		{"role", "secret", "group", "grouppassword", "", "sumapassword", "http://susemgr", "http://vault", "add"},
-		{"role", "secret", "group", "grouppassword", "sumauser", "", "http://susemgr", "http://vault", "add"},
-		{"role", "secret", "group", "grouppassword", "sumauser", "sumapassword", "", "http://vault", "add"},
-		{"role", "secret", "group", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "", "add"},
-		{"role", "secret", "group", "grouppassword", "sumauser", "sumapassword", "http://susemgr", "http://vault", ""},
+		{"", "secret", "group", "grouppassword", "127.0.0.0", "http://vault", "add"},
+		{"role", "", "group", "grouppassword", "127.0.0.0", "http://vault", "add"},
+		{"role", "secret", "", "grouppassword", "127.0.0.0", "http://vault", "add"},
+		{"role", "secret", "group", "", "127.0.0.0", "http://vault", "add"},
+		{"role", "secret", "group", "grouppassword", "", "http://vault", "add"},
+		{"role", "secret", "group", "grouppassword", "127.0.0.0", "", "add"},
+		{"role", "secret", "group", "grouppassword", "127.0.0.0", "http://vault", ""},
 	}
 
 	for i, inv := range invalids {
-		if checkFlag(inv.proleID, inv.psecretID, inv.pgroup, inv.pgrouppassword, inv.psumauser, inv.psumapassword, inv.psusemgr, inv.pvault, inv.ptask) {
+		if checkFlag(inv.proleID, inv.psecretID, inv.pgroup, inv.pgrouppassword, inv.pnetwork, inv.pvault, inv.ptask) {
 			t.Errorf("Expected checkFlag to fail for invalid input set #%d: %+v", i, inv)
 		}
 	}
@@ -104,9 +102,7 @@ func TestFlagParsing(t *testing.T) {
 		"-s", "secretid",
 		"-g", "group",
 		"-d", "grouppassword",
-		"-u", "sumauser",
-		"-p", "sumapassword",
-		"-m", "http://susemgr",
+		"-n", "127.0.0.0",
 		"-a", "http://vault",
 		"-t", "add",
 		"-v",
@@ -133,16 +129,10 @@ func TestFlagParsing(t *testing.T) {
 	if grouppassword != "grouppassword" {
 		t.Errorf("Expected grouppassword to be 'grouppassword', got %q", grouppassword)
 	}
-	if sumauser != "sumauser" {
-		t.Errorf("Expected sumauser to be 'sumauser', got %q", sumauser)
-	}
-	if sumapassword != "sumapassword" {
-		t.Errorf("Expected sumapassword to be 'sumapassword', got %q", sumapassword)
+	if network != "127.0.0.0" {
+		t.Errorf("Expected network to be '127.0.0.0', got %q", network)
 	}
 
-	if susemgr != "http://susemgr" {
-		t.Errorf("Expected susemgr to be 'http://susemgr', got %q", susemgr)
-	}
 	if vaultAddress != "http://vault" {
 		t.Errorf("Expected vaultAddress to be 'http://vault', got %q", vaultAddress)
 	}
