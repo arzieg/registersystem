@@ -31,28 +31,26 @@ var (
 	secretID      string
 	group         string
 	grouppassword string
-	sumauser      string
-	sumapassword  string
-	susemgr       string
+	network       string
 	vaultAddress  string
 	task          string
 )
+
+const kvprefix string = "kv-clab-"
 
 func registerFlags(fs *flag.FlagSet) {
 	fs.StringVar(&roleID, "r", "", "HCV roleID")
 	fs.StringVar(&secretID, "s", "", "HCV secretID")
 	fs.StringVar(&group, "g", "", "SUSE Manager Group")
 	fs.StringVar(&grouppassword, "d", "", "SUSE Manager Group Password")
-	fs.StringVar(&sumauser, "u", "", "SUSE Manager Admin-User")
-	fs.StringVar(&sumapassword, "p", "", "SUSE Manager Admin-Password")
-	fs.StringVar(&susemgr, "m", "", "SUSE Manager URL")
+	fs.StringVar(&network, "n", "", "Network of the Testenvironment f.i. 172.1.22.0")
 	fs.StringVar(&vaultAddress, "a", "", "Vault Address")
 	fs.StringVar(&task, "t", "", "Task [add | delete]")
 	fs.BoolVar(&verbose, "v", false, "Verbose output")
 }
 
 func customUsage() {
-	fmt.Fprintf(os.Stderr, "Usage of %s: -r [roleID] -s [secretID] -a [URL Vault] -m [URL SUSE Manager] -u [SUMA Adminuser] -p [SUMA Adminpassword] -g [SUMA Group] -d [SUMA Grouppassword] -t [add|delete] -v [verbose]\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "Usage of %s: -r [roleID] -s [secretID] -a [URL Vault] -g [SUMA Group] -d [SUMA Grouppassword] -n [Network] -t [add|delete] -v [verbose]\n\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "The program create or delete an user und policy in HCV and create an user in the SUSE Manager .\n\nParameter:\n")
 
 	flag.PrintDefaults()
@@ -82,7 +80,7 @@ func getTask(line string) string {
 	}
 }
 
-func checkFlag(proleID, psecretID, pgroup, pgrouppassword, psumauser, psumapassword, psusemgr, pvault, ptask string) bool {
+func checkFlag(proleID, psecretID, pgroup, pgrouppassword, pnetwork, pvault, ptask string) bool {
 
 	if isEmpty(proleID) {
 		fmt.Fprintf(os.Stderr, "Please enter a roleID.\n")
@@ -104,18 +102,8 @@ func checkFlag(proleID, psecretID, pgroup, pgrouppassword, psumauser, psumapassw
 		return false
 	}
 
-	if isEmpty(psumauser) {
-		fmt.Fprintf(os.Stderr, "Please enter the SUSE Manager useradmin user\n")
-		return false
-	}
-
-	if isEmpty(psumapassword) {
-		fmt.Fprintf(os.Stderr, "Please enter a SUSE Manager useradmin password\n")
-		return false
-	}
-
-	if isEmpty(psusemgr) {
-		fmt.Fprintf(os.Stderr, "Please enter the URL of the SUSE Manager.\n")
+	if isEmpty(pnetwork) {
+		fmt.Fprintf(os.Stderr, "Please enter the Network.\n")
 		return false
 	}
 
@@ -134,11 +122,6 @@ func checkFlag(proleID, psecretID, pgroup, pgrouppassword, psumauser, psumapassw
 		return false
 	}
 
-	if !isURL(psusemgr) || isEmpty(psusemgr) {
-		fmt.Fprintf(os.Stderr, "Please enter a valid URL for SUSE Manager.\n")
-		return false
-	}
-
 	return true
 }
 
@@ -149,16 +132,14 @@ func main() {
 	flag.Parse()
 
 	if verbose {
-		fmt.Println("DEBUG: verbose: ", verbose)
-		fmt.Println("DEBUG: roleID:", roleID)
-		fmt.Println("DEBUG: secretID:", secretID)
-		fmt.Println("DEBUG: group:", group)
-		fmt.Println("DEBUG: grouppassword:", grouppassword)
-		fmt.Println("DEBUG: sumauser:", sumauser)
-		fmt.Println("DEBUG: sumapassword:", sumapassword)
-		fmt.Println("DEBUG: susemgr:", susemgr)
-		fmt.Println("DEBUG: vaultAddress:", vaultAddress)
-		fmt.Println("DEBUG: task:", task)
+		log.Println("DEBUG MAIN: verbose: ", verbose)
+		log.Println("DEBUG MAIN: roleID:", roleID)
+		log.Println("DEBUG MAIN: secretID:", secretID)
+		log.Println("DEBUG MAIN: group:", group)
+		log.Println("DEBUG MAIN: grouppassword:", grouppassword)
+		log.Println("DEBUG MAIN: network:", network)
+		log.Println("DEBUG MAIN: vaultAddress:", vaultAddress)
+		log.Println("DEBUG MAIN: task:", task)
 	}
 
 	// no args
@@ -167,19 +148,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	if !checkFlag(roleID, secretID, group, grouppassword, sumauser, sumapassword, susemgr, vaultAddress, task) {
+	if !checkFlag(roleID, secretID, group, grouppassword, network, vaultAddress, task) {
 		os.Exit(1)
 	}
 
 	task = getTask(task)
 	if task == "error" {
-		fmt.Fprintf(os.Stderr, "Please enter a valid task [add | delete].\n")
-		os.Exit(1)
+		log.Fatalf("please enter a valid task [add | delete].\n")
 	}
 
 	client, err := webapi.VaultLogin(roleID, secretID, vaultAddress)
 	if err != nil {
-		log.Fatalf("Error logging in to Vault: %v", err)
+		log.Fatalf("error logging in to Vault: %v", err)
 	}
 
 	policyName, err := webapi.VaultCreatePolicy(client, group, verbose)
@@ -188,8 +168,8 @@ func main() {
 	}
 
 	if verbose {
-		log.Printf("DEBUG: policyName = %s\n", policyName)
-		log.Printf("DEBUG: client =  %v\n", client)
+		log.Printf("DEBUG MAIN: policyName = %s\n", policyName)
+		log.Printf("DEBUG MAIN: client =  %v\n", client)
 	}
 
 	roleID, secretID, err = webapi.VaultCreateRole(client, group, policyName, verbose)
@@ -197,7 +177,35 @@ func main() {
 		log.Fatalf("error create role: %v", err)
 	}
 
-	/* create policy */
+	log.Printf("DEBUG MAIN: Got roleID: %s and secretID: %s for group %s\n", roleID, secretID, group)
+
+	// enable KV
+	path := fmt.Sprintf("%s%s", kvprefix, group)
+	err = webapi.VaultEnableKVv2(client, path, verbose)
+	if err != nil {
+		log.Fatalf("error enabling kv, got: %v ", err)
+	}
+
+	log.Printf("Successfull Enabled KVv2: %s", path)
+
+	// write AppRole Output to KV
+	path = fmt.Sprintf("%s%s/data/approle_output", kvprefix, group)
+	err = webapi.VaultUpdateSecret(client, path, "role_id", roleID, verbose)
+	if err != nil {
+		log.Fatalf("error writing secret to vault: %v", err)
+	}
+	log.Printf("Successful update secret on %s\n", path)
+
+	err = webapi.VaultUpdateSecret(client, path, "secret_id", secretID, verbose)
+	if err != nil {
+		log.Fatalf("error writing secret to vault: %v", err)
+	}
+	log.Printf("Successful update secret on %s\n", path)
+
+	/*
+		TODO:
+		 write Network information to config  network(key)=value
+	*/
 
 	/* logout */
 	err = webapi.VaultLogout(client)

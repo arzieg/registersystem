@@ -52,7 +52,7 @@ func GetVaultSecrets(roleID, secretID, vaultAddress, group string, verbose bool)
 	}
 	token := secret.Auth.ClientToken
 	if verbose {
-		fmt.Printf("DEBUG: Successfully authenticated! Token: %s\n", token)
+		log.Printf("DEBUG HCVAPI: Successfully authenticated! Token: %s\n", token)
 	}
 
 	// Step 3: Set the client token
@@ -77,9 +77,9 @@ func GetVaultSecrets(roleID, secretID, vaultAddress, group string, verbose bool)
 
 	// Print the retrieved key-value pairs
 	if verbose {
-		fmt.Println("DEBUG: Retrieved secret:")
+		log.Println("DEBUG HCVAPI: Retrieved secret:")
 		for key := range secretData {
-			fmt.Printf("DEBUG: %s: *******\n", key)
+			log.Printf("DEBUG HCVAPI: %s: *******\n", key)
 		}
 	}
 
@@ -155,8 +155,8 @@ path "sys/policies/acl/%s_read_policy" {
 }`, group, group)
 
 	if verbose {
-		log.Printf("policyName: %s\n", policyName)
-		log.Printf("policyContent:%s\n", policyContent)
+		log.Printf("DEBUG HCVAPI: policyName: %s\n", policyName)
+		log.Printf("DEBUG HCVAPI: policyContent:%s\n", policyContent)
 	}
 
 	_, err = client.Logical().Write(fmt.Sprintf("sys/policies/acl/%s", policyName), map[string]interface{}{
@@ -167,7 +167,7 @@ path "sys/policies/acl/%s_read_policy" {
 	}
 
 	if verbose {
-		log.Printf("Policy created successfully: %s", policyName)
+		log.Printf("DEBUG HCVAPI: Policy created successfully: %s", policyName)
 	}
 
 	return policyName, nil
@@ -189,22 +189,119 @@ func VaultCreateRole(client *api.Client, group, policyName string, verbose bool)
 	}
 
 	if verbose {
-		log.Printf("AppRole created successfully: %s", group)
+		log.Printf("DEBUG HCVAPI: AppRole created successfully: %s", group)
 	}
 
 	// Retrieve role ID for authentication
 	roleIDPath := fmt.Sprintf("auth/approle/role/%s/role-id", group)
-	roleIDSecret, err := client.Logical().Read(roleIDPath)
+	roleIDSecretResponse, err := client.Logical().Read(roleIDPath)
+
 	if err != nil {
 		return roleID, secretID, fmt.Errorf("failed to retrieve role ID: %v", err)
 	}
 
-	/*
-			if roleIDSecret != nil {
-			fmt.Println("Role ID:", roleIDSecret.Data["role_id"])
-		} else {
-			fmt.Println("No Role ID found.")
-		}
-	*/
+	roleID, ok := roleIDSecretResponse.Data["role_id"].(string)
+
+	if !ok {
+		return roleID, secretID, fmt.Errorf("failed to retrieve role ID: %v", err)
+	}
+
+	if verbose {
+		log.Printf("DEBUG HCVAPI: Got roleID: %s\n", roleID)
+	}
+
+	// get secretID
+	secretIDPath := fmt.Sprintf("auth/approle/role/%s/secret-id", group)
+	secretIDResponse, err := client.Logical().Write(secretIDPath, map[string]interface{}{})
+
+	if err != nil {
+		return roleID, secretID, fmt.Errorf("failed to generate secret ID: %v", err)
+	}
+
+	secretID, ok = secretIDResponse.Data["secret_id"].(string)
+
+	if !ok {
+		return roleID, secretID, fmt.Errorf("unexpected response format for secret ID")
+	}
+
+	if verbose {
+		log.Println("DEBUG HCVAPI: Got secretID: #########")
+	}
+
 	return roleID, secretID, nil
+}
+
+func VaultEnableKVv2(client *api.Client, path string, verbose bool) (err error) {
+
+	mountConfig := map[string]interface{}{
+		"type": "kv",
+		"options": map[string]interface{}{
+			"version": "2",
+		},
+	}
+
+	// Vault API path for enabling secrets engine
+	enablePath := fmt.Sprintf("/sys/mounts/%s", path)
+
+	// Check if the KV secrets engine is already enabled
+	mounts, err := client.Sys().ListMounts()
+	if err != nil {
+		return fmt.Errorf("failed to list Vault mounts: %v", err)
+	}
+
+	// Vault paths always end with "/"
+	mountPath := path + "/"
+
+	if _, exists := mounts[mountPath]; exists {
+		if verbose {
+			log.Printf("DEBUG HCVAPI: KV v2 is already enabled at: %s\n", path)
+		}
+		return nil
+	}
+
+	// Write request to Vault
+	_, err = client.Logical().Write(enablePath, mountConfig)
+	if err != nil {
+		return fmt.Errorf("failed to enable KV v2: %v", err)
+	}
+
+	if verbose {
+		log.Printf("DEBUG HCVAPI: KV v2 successfully enabled at:%s\n", path)
+	}
+	return nil
+}
+
+func VaultUpdateSecret(client *api.Client, path, key, value string, verbose bool) error {
+	// Read existing secrets
+	secret, err := client.Logical().Read(path)
+	if err != nil {
+		return fmt.Errorf("failed to read existing secrets: %v", err)
+	}
+
+	// Initialize the data structure if there are no existing secrets
+	var existingData map[string]interface{}
+	if secret != nil && secret.Data != nil {
+		existingData, _ = secret.Data["data"].(map[string]interface{})
+	} else {
+		existingData = make(map[string]interface{})
+	}
+
+	// Insert key-value
+	existingData[key] = value
+
+	// Write the updated secrets back to Vault
+	updatedSecret := map[string]interface{}{
+		"data": existingData, // KV v2 requires the data field
+	}
+
+	_, err = client.Logical().Write(path, updatedSecret)
+	if err != nil {
+		return fmt.Errorf("failed to write updated secrets: %v", err)
+	}
+
+	if verbose {
+		log.Printf("DEBUG HCVAPI: Successful update secret on %s", path)
+	}
+
+	return nil
 }
