@@ -13,7 +13,7 @@ func GetVaultSecrets(roleID, secretID, vaultAddress, group string, verbose bool)
 	// Path to the secret
 	secretPath := fmt.Sprintf("kv-clab-%s/data/suma", group)
 	if verbose {
-		fmt.Printf("DEBUG: secretPath = %s\n", secretPath)
+		fmt.Printf("DEBUG HCVAPI: secretPath = %s\n", secretPath)
 	}
 	// Initialize Vault client
 	config := api.DefaultConfig()
@@ -87,7 +87,7 @@ func GetVaultSecrets(roleID, secretID, vaultAddress, group string, verbose bool)
 	return secretData, nil
 }
 
-func VaultLogin(roleID, secretID, vaultAddr string) (*api.Client, error) {
+func VaultLogin(roleID, secretID, vaultAddr string, verbose bool) (*api.Client, error) {
 	// Create Vault client
 	config := &api.Config{Address: vaultAddr}
 
@@ -112,18 +112,19 @@ func VaultLogin(roleID, secretID, vaultAddr string) (*api.Client, error) {
 	// Authenticate using AppRole
 	secret, err := client.Logical().Write("auth/approle/login", data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to authenticate with Vault: %v", err)
+		return nil, fmt.Errorf("failed to authenticate to Vault: %v", err)
 	}
 
 	// Set the token received from authentication
 	client.SetToken(secret.Auth.ClientToken)
-	log.Println("Successfully authenticated with Vault!")
-
+	if verbose {
+		log.Println("DEBUG HCVAPI: Successful authenticate to Vault!")
+	}
 	return client, nil
 }
 
 // LogoutFromVault revokes the current Vault token
-func VaultLogout(client *api.Client) error {
+func VaultLogout(client *api.Client, verbose bool) error {
 	// Get the token to revoke
 	token := client.Token()
 	if token == "" {
@@ -136,7 +137,9 @@ func VaultLogout(client *api.Client) error {
 		return fmt.Errorf("failed to revoke token: %v", err)
 	}
 
-	log.Println("Successfully logged out from Vault!")
+	if verbose {
+		log.Println("DEBUG HCVAPI: Successful logged out from Vault!")
+	}
 	return nil
 }
 

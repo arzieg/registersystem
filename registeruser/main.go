@@ -6,18 +6,25 @@ package main
 */
 
 /*
-TODO:
-  Aufruf:
-   registeruser -o <hcv-root-token> -g user-to-create -d password-to-create -u <sumaloginuser> -p <sumaloginpwd>
-                -m <susemgr-addr> -a <hcv-vault-addr> -t <create/delete> -v <verbose>
+  call
+   registeruser -r <roleID> -s <secretID> -a <hcv-vault-addr>
+   		-d <password-to-create-in-suma> -g <suma-group-to-create>
+		-n <network configured for dev environment>
+		-t <create/delete entry>
+		-v <verbose>
 
 	output: role-id, secret-id
+
+	TODO:
+		delete entries
+
 */
 
 import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/url"
 	"os"
 	"registersystem/webapi"
@@ -65,6 +72,11 @@ func isURL(line string) bool {
 	return true
 }
 
+func isIP(line string) bool {
+	i := net.ParseIP(line)
+	return i != nil
+}
+
 func isEmpty(line string) bool {
 	return (line == "")
 }
@@ -83,42 +95,42 @@ func getTask(line string) string {
 func checkFlag(proleID, psecretID, pgroup, pgrouppassword, pnetwork, pvault, ptask string) bool {
 
 	if isEmpty(proleID) {
-		fmt.Fprintf(os.Stderr, "Please enter a roleID.\n")
+		log.Println("Please enter a roleID.")
 		return false
 	}
 
 	if isEmpty(psecretID) {
-		fmt.Fprintf(os.Stderr, "Please enter a secretID.\n")
+		log.Println("Please enter a secretID.")
 		return false
 	}
 
 	if isEmpty(pgroup) {
-		fmt.Fprintf(os.Stderr, "Please enter a group (user) to create.\n")
+		log.Println("Please enter a group (user) to create.")
 		return false
 	}
 
 	if isEmpty(pgrouppassword) {
-		fmt.Fprintf(os.Stderr, "Please enter a password for the group (user).\n")
-		return false
-	}
-
-	if isEmpty(pnetwork) {
-		fmt.Fprintf(os.Stderr, "Please enter the Network.\n")
+		log.Println("Please enter a password for the group (user) in SUSE Manager.")
 		return false
 	}
 
 	if isEmpty(pvault) {
-		fmt.Fprintf(os.Stderr, "Please enter the URL of the Hashicorp Vault.\n")
+		log.Println("Please enter the URL of the Hashicorp Vault.")
 		return false
 	}
 
 	if isEmpty(ptask) {
-		fmt.Fprintf(os.Stderr, "Please enter a task.\n")
+		log.Println("Please enter a task.")
 		return false
 	}
 
 	if !isURL(pvault) || isEmpty(pvault) {
-		fmt.Fprintf(os.Stderr, "Please enter a valid URL for vault.\n")
+		log.Println("Please enter a valid URL for vault.")
+		return false
+	}
+
+	if !isIP(pnetwork) || isEmpty(pnetwork) {
+		log.Println("Please enter a valid IP for the network.")
 		return false
 	}
 
@@ -157,7 +169,7 @@ func main() {
 		log.Fatalf("please enter a valid task [add | delete].\n")
 	}
 
-	client, err := webapi.VaultLogin(roleID, secretID, vaultAddress)
+	client, err := webapi.VaultLogin(roleID, secretID, vaultAddress, verbose)
 	if err != nil {
 		log.Fatalf("error logging in to Vault: %v", err)
 	}
@@ -177,8 +189,6 @@ func main() {
 		log.Fatalf("error create role: %v", err)
 	}
 
-	log.Printf("DEBUG MAIN: Got roleID: %s and secretID: %s for group %s\n", roleID, secretID, group)
-
 	// enable KV
 	path := fmt.Sprintf("%s%s", kvprefix, group)
 	err = webapi.VaultEnableKVv2(client, path, verbose)
@@ -186,93 +196,32 @@ func main() {
 		log.Fatalf("error enabling kv, got: %v ", err)
 	}
 
-	log.Printf("Successfull Enabled KVv2: %s", path)
-
 	// write AppRole Output to KV
 	path = fmt.Sprintf("%s%s/data/approle_output", kvprefix, group)
 	err = webapi.VaultUpdateSecret(client, path, "role_id", roleID, verbose)
 	if err != nil {
 		log.Fatalf("error writing secret to vault: %v", err)
 	}
-	log.Printf("Successful update secret on %s\n", path)
 
 	err = webapi.VaultUpdateSecret(client, path, "secret_id", secretID, verbose)
 	if err != nil {
 		log.Fatalf("error writing secret to vault: %v", err)
 	}
-	log.Printf("Successful update secret on %s\n", path)
 
-	/*
-		TODO:
-		 write Network information to config  network(key)=value
-	*/
+	// write Network to KV
+	path = fmt.Sprintf("%s%s/data/config", kvprefix, group)
+	err = webapi.VaultUpdateSecret(client, path, "network", network, verbose)
+	if err != nil {
+		log.Fatalf("error writing secret to vault: %v", err)
+	}
 
 	/* logout */
-	err = webapi.VaultLogout(client)
+	err = webapi.VaultLogout(client, verbose)
 	if err != nil {
 		log.Fatalf("Error logout from Vault: %v", err)
 	}
 
-	/*
-		TODO:
-		 client handler wird zurückgegeben.
-		  -> create acl policyconst
-		  -> create user
-	*/
+	fmt.Fprintf(os.Stdout, "API Login-Information for User: %s\nroleID=%s\nsecretID=%s\n", group, roleID, secretID)
 
-	/*
-		secretData, err := webapi.GetVaultSecrets(roleID, secretID, vaultAddress, group, verbose)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error retrieving secret: %v", err)
-		}
-
-		user, ok := secretData["login"].(string)
-		if !ok {
-			fmt.Fprintf(os.Stderr, "Value for 'Login' is not a string\n")
-		}
-		password, ok := secretData["password"].(string)
-		if !ok {
-			fmt.Fprintf(os.Stderr, "Value for 'Password' is not a string\n")
-		}
-		network, ok := secretData["network"].(string)
-		if !ok {
-			fmt.Fprintf(os.Stderr, "Value for 'Network' is not a string\n")
-		}
-
-		if verbose {
-			fmt.Fprintf(os.Stderr, "DEBUG: network = %s\n", network)
-		}
-
-		sessioncookie := webapi.Login(user, password, susemgr, verbose)
-		if verbose {
-			_, err := fmt.Fprintf(os.Stdout, "DEBUG: Session Cookie %s\n", sessioncookie)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "Error writing to stdout:", err)
-			}
-
-		}
-
-		switch task {
-		case "add":
-			result := webapi.AddSystem(sessioncookie, susemgr, hostname, group, network, verbose)
-			if result != http.StatusOK {
-				fmt.Fprintf(os.Stderr, "An error occured, got http error %d", result)
-				os.Exit(1)
-			} else {
-				fmt.Printf("Successful add system %s to group %s\n", hostname, group)
-				fmt.Printf("Got result: %d\n", result)
-			}
-		case "delete":
-			result := webapi.DeleteSystem(sessioncookie, susemgr, hostname, network, verbose)
-			if result != http.StatusOK {
-				fmt.Fprintf(os.Stderr, "An error occured, got http error %d", result)
-				os.Exit(1)
-			} else {
-				fmt.Printf("Successful delete system %s\n", hostname)
-				fmt.Printf("Got result: %d\n", result)
-			}
-
-		}
-	*/
 	os.Exit(0)
 }
