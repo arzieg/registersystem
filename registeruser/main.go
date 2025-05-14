@@ -41,6 +41,9 @@ var (
 	network       string
 	vaultAddress  string
 	task          string
+
+	grouproleID   string // roleID of the created User
+	groupsecretID string // secretID of the created User
 )
 
 const kvprefix string = "kv-clab-"
@@ -174,54 +177,75 @@ func main() {
 		log.Fatalf("error logging in to Vault: %v", err)
 	}
 
-	policyName, err := webapi.VaultCreatePolicy(client, group, verbose)
-	if err != nil {
-		log.Fatalf("error create policy: %v", err)
-	}
+	switch task {
+	case "add":
+		{
+			policyName, err := webapi.VaultCreatePolicy(client, group, verbose)
+			if err != nil {
+				log.Fatalf("error create policy: %v", err)
+			}
 
-	if verbose {
-		log.Printf("DEBUG MAIN: policyName = %s\n", policyName)
-		log.Printf("DEBUG MAIN: client =  %v\n", client)
-	}
+			if verbose {
+				log.Printf("DEBUG MAIN: policyName = %s\n", policyName)
+				log.Printf("DEBUG MAIN: client =  %v\n", client)
+			}
 
-	roleID, secretID, err = webapi.VaultCreateRole(client, group, policyName, verbose)
-	if err != nil {
-		log.Fatalf("error create role: %v", err)
-	}
+			grouproleID, groupsecretID, err = webapi.VaultCreateRole(client, group, policyName, verbose)
+			if err != nil {
+				log.Fatalf("error create role: %v", err)
+			}
 
-	// enable KV
-	path := fmt.Sprintf("%s%s", kvprefix, group)
-	err = webapi.VaultEnableKVv2(client, path, verbose)
-	if err != nil {
-		log.Fatalf("error enabling kv, got: %v ", err)
-	}
+			// enable KV
+			path := fmt.Sprintf("%s%s", kvprefix, group)
+			err = webapi.VaultEnableKVv2(client, path, verbose)
+			if err != nil {
+				log.Fatalf("error enabling kv, got: %v ", err)
+			}
 
-	// write AppRole Output to KV
-	path = fmt.Sprintf("%s%s/data/approle_output", kvprefix, group)
-	err = webapi.VaultUpdateSecret(client, path, "role_id", roleID, verbose)
-	if err != nil {
-		log.Fatalf("error writing secret to vault: %v", err)
-	}
+			// write AppRole Output to KV
+			path = fmt.Sprintf("%s%s/data/approle_output", kvprefix, group)
+			err = webapi.VaultUpdateSecret(client, path, "role_id", roleID, verbose)
+			if err != nil {
+				log.Fatalf("error writing secret to vault: %v", err)
+			}
 
-	err = webapi.VaultUpdateSecret(client, path, "secret_id", secretID, verbose)
-	if err != nil {
-		log.Fatalf("error writing secret to vault: %v", err)
-	}
+			err = webapi.VaultUpdateSecret(client, path, "secret_id", secretID, verbose)
+			if err != nil {
+				log.Fatalf("error writing secret to vault: %v", err)
+			}
 
-	// write Network to KV
-	path = fmt.Sprintf("%s%s/data/config", kvprefix, group)
-	err = webapi.VaultUpdateSecret(client, path, "network", network, verbose)
-	if err != nil {
-		log.Fatalf("error writing secret to vault: %v", err)
-	}
+			// write Network to KV
+			path = fmt.Sprintf("%s%s/data/config", kvprefix, group)
+			err = webapi.VaultUpdateSecret(client, path, "network", network, verbose)
+			if err != nil {
+				log.Fatalf("error writing secret to vault: %v", err)
+			}
 
+			fmt.Fprintf(os.Stdout, "API Login-Information for User: %s\nroleID=%s\nsecretID=%s\n", group, grouproleID, groupsecretID)
+
+		}
+	case "delete":
+		{
+			err := webapi.VaultDeletePolicy(client, group, verbose)
+			if err != nil {
+				log.Fatalf("error deleting policy: %v", err)
+			}
+
+			// disable KV
+			path := fmt.Sprintf("%s%s", kvprefix, group)
+			err = webapi.VaultDisableKVv2(client, path, verbose)
+			if err != nil {
+				log.Fatalf("error disable kv, got: %v ", err)
+			}
+
+			fmt.Fprintf(os.Stdout, "Successful remove policy and kv-vault\n")
+		}
+	}
 	/* logout */
 	err = webapi.VaultLogout(client, verbose)
 	if err != nil {
 		log.Fatalf("Error logout from Vault: %v", err)
 	}
-
-	fmt.Fprintf(os.Stdout, "API Login-Information for User: %s\nroleID=%s\nsecretID=%s\n", group, roleID, secretID)
 
 	os.Exit(0)
 }

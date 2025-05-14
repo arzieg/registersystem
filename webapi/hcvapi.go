@@ -176,6 +176,22 @@ path "sys/policies/acl/%s_read_policy" {
 	return policyName, nil
 }
 
+func VaultDeletePolicy(client *api.Client, group string, verbose bool) (err error) {
+
+	policyName := fmt.Sprintf("%s_read_policy", group)
+
+	_, err = client.Logical().Delete(fmt.Sprintf("sys/policies/acl/%s", policyName))
+	if err != nil {
+		return fmt.Errorf("failed to delete policy: %v", err)
+	}
+
+	if verbose {
+		log.Printf("DEBUG HCVAPI: Policy deleted successfully: %s", policyName)
+	}
+
+	return nil
+}
+
 func VaultCreateRole(client *api.Client, group, policyName string, verbose bool) (roleID, secretID string, err error) {
 
 	roleData := map[string]interface{}{
@@ -270,6 +286,39 @@ func VaultEnableKVv2(client *api.Client, path string, verbose bool) (err error) 
 
 	if verbose {
 		log.Printf("DEBUG HCVAPI: KV v2 successfully enabled at:%s\n", path)
+	}
+	return nil
+}
+
+func VaultDisableKVv2(client *api.Client, path string, verbose bool) (err error) {
+
+	// Vault API path for disabling secrets engine
+	disablePath := fmt.Sprintf("/sys/mounts/%s", path)
+
+	// Check if the KV secrets engine is already enabled
+	mounts, err := client.Sys().ListMounts()
+	if err != nil {
+		return fmt.Errorf("failed to list Vault mounts: %v", err)
+	}
+
+	// Vault paths always end with "/"
+	mountPath := path + "/"
+
+	if _, exists := mounts[mountPath]; !exists {
+		if verbose {
+			log.Printf("DEBUG HCVAPI: KV v2 is already disabled: %s\n", path)
+		}
+		return nil
+	}
+
+	// Write request to Vault
+	_, err = client.Logical().Delete(disablePath)
+	if err != nil {
+		return fmt.Errorf("failed to disable KV v2: %v", err)
+	}
+
+	if verbose {
+		log.Printf("DEBUG HCVAPI: KV v2 successful disable path:%s\n", path)
 	}
 	return nil
 }
