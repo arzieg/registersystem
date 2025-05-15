@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"registersystem/webapi"
@@ -196,13 +197,29 @@ func main() {
 		log.Fatalf("error, suma url not definied. Check value in vault.")
 	}
 
-	/* TODO
-	Add user to suma
-	*/
+	sumalogin := fmt.Sprintf("%s", suma["login"])
+	sumapassword := fmt.Sprintf("%s", suma["password"])
+	sumaurl := fmt.Sprintf("%s", suma["url"])
 
 	switch task {
 	case "add":
 		{
+			// create user in suma
+			sessioncookie := webapi.Login(sumalogin, sumapassword, sumaurl, verbose)
+			if verbose {
+				log.Printf("DEBUG MAIN: Session Cookie for SUMA: %s\n", sessioncookie)
+			}
+
+			result := webapi.SumaAddUser(sessioncookie, group, grouppassword, sumaurl, verbose)
+			if result != http.StatusOK {
+				log.Printf("an error occured, got http error %d", result)
+				os.Exit(1)
+			} else {
+				log.Printf("successful add user %s\n", group)
+				log.Printf("got result from %s: %d\n", sumaurl, result)
+			}
+
+			// do the vault stuff
 			policyName, err := webapi.VaultCreatePolicy(client, group, verbose)
 			if err != nil {
 				log.Fatalf("error create policy: %v", err)
@@ -246,10 +263,24 @@ func main() {
 
 			fmt.Fprintf(os.Stdout, "API Login-Information for User: %s\nroleID=%s\nsecretID=%s\n", group, grouproleID, groupsecretID)
 
+			//webapi.GetApiList(sessioncookie, sumaurl, verbose)
+
 		}
 	case "delete":
 		{
-			err := webapi.VaultDeletePolicy(client, group, verbose)
+			sessioncookie := webapi.Login(sumalogin, sumapassword, sumaurl, verbose)
+			if verbose {
+				log.Printf("DEBUG MAIN: Session Cookie for SUMA: %s\n", sessioncookie)
+			}
+
+			err := webapi.SumaRemoveUser(sessioncookie, group, sumaurl, verbose)
+			if err != nil {
+				log.Printf("an error occured, got error %v", err)
+			} else {
+				log.Printf("successful remove user %s\n", group)
+			}
+
+			err = webapi.VaultDeletePolicy(client, group, verbose)
 			if err != nil {
 				log.Fatalf("error deleting policy: %v", err)
 			}
