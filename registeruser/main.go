@@ -15,9 +15,6 @@ package main
 
 	output: role-id, secret-id
 
-	TODO:
-		delete entries
-
 */
 
 import (
@@ -180,7 +177,7 @@ func main() {
 
 	defer webapi.VaultLogout(client, verbose)
 
-	suma, err := webapi.GetVaultSecrets(client, vaultAddress, "dagobah", verbose)
+	suma, err := webapi.VaultGetSecrets(client, vaultAddress, "dagobah", "suma", verbose)
 	if err != nil {
 		log.Fatalf("error getting vault secrets: %v", err)
 	}
@@ -205,18 +202,26 @@ func main() {
 	case "add":
 		{
 			// create user in suma
-			sessioncookie := webapi.Login(sumalogin, sumapassword, sumaurl, verbose)
+			sessioncookie, err := webapi.SumaLogin(sumalogin, sumapassword, sumaurl, verbose)
+			if err != nil {
+				log.Fatalf("error during SUMA login. Errorcode %v", err)
+			}
 			if verbose {
 				log.Printf("DEBUG MAIN: Session Cookie for SUMA: %s\n", sessioncookie)
 			}
 
-			result := webapi.SumaAddUser(sessioncookie, group, grouppassword, sumaurl, verbose)
+			result, err := webapi.SumaAddUser(sessioncookie, group, grouppassword, sumaurl, verbose)
+			if err != nil {
+				log.Fatalf("error adding user to SUMA. Errorcode %v", err)
+			}
 			if result != http.StatusOK {
 				log.Printf("an error occured, got http error %d", result)
 				os.Exit(1)
 			} else {
-				log.Printf("successful add user %s\n", group)
-				log.Printf("got result from %s: %d\n", sumaurl, result)
+				log.Printf("successful add user %s to SUMA\n", group)
+				if verbose {
+					log.Printf("got result from %s: %d\n", sumaurl, result)
+				}
 			}
 
 			// do the vault stuff
@@ -268,12 +273,15 @@ func main() {
 		}
 	case "delete":
 		{
-			sessioncookie := webapi.Login(sumalogin, sumapassword, sumaurl, verbose)
+			sessioncookie, err := webapi.SumaLogin(sumalogin, sumapassword, sumaurl, verbose)
+			if err != nil {
+				log.Fatalf("error during SUMA login. Errorcode %v", err)
+			}
 			if verbose {
 				log.Printf("DEBUG MAIN: Session Cookie for SUMA: %s\n", sessioncookie)
 			}
 
-			err := webapi.SumaRemoveUser(sessioncookie, group, sumaurl, verbose)
+			err = webapi.SumaRemoveUser(sessioncookie, group, sumaurl, verbose)
 			if err != nil {
 				log.Printf("an error occured, got error %v", err)
 			} else {
@@ -292,14 +300,8 @@ func main() {
 				log.Fatalf("error disable kv, got: %v ", err)
 			}
 
-			fmt.Fprintf(os.Stdout, "Successful remove policy and kv-vault\n")
+			log.Printf("successful remove policy and kv-vault\n")
 		}
 	}
-	/* logout */
-	// err = webapi.VaultLogout(client, verbose)
-	// if err != nil {
-	// 	log.Fatalf("Error logout from Vault: %v", err)
-	// }
-
 	os.Exit(0)
 }

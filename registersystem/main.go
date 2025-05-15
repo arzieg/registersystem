@@ -17,6 +17,7 @@ TODO:
 import (
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -179,29 +180,53 @@ func main() {
 		os.Exit(1)
 	}
 
-	secretData, err := webapi.GetVaultSecrets(roleID, secretID, vaultAddress, group, verbose)
+	client, err := webapi.VaultLogin(roleID, secretID, vaultAddress, verbose)
+	if err != nil {
+		log.Fatalf("error logging in to Vault: %v", err)
+	}
+
+	defer webapi.VaultLogout(client, verbose)
+
+	suma, err := webapi.VaultGetSecrets(client, vaultAddress, "dagobah", "suma", verbose)
+	if err != nil {
+		log.Fatalf("error getting vault secrets: %v", err)
+	}
+
+	if suma["login"] == nil || suma["login"] == "" {
+		log.Fatalf("error, suma login user not definied. Check value in vault.")
+	}
+
+	if suma["password"] == nil || suma["password"] == "" {
+		log.Fatalf("error, suma password not definied. Check value in vault.")
+	}
+
+	if suma["url"] == nil || suma["url"] == "" {
+		log.Fatalf("error, suma url not definied. Check value in vault.")
+	}
+
+	sumalogin := fmt.Sprintf("%s", suma["login"])
+	sumapassword := fmt.Sprintf("%s", suma["password"])
+	sumaurl := fmt.Sprintf("%s", suma["url"])
+
+	secretData, err := webapi.VaultGetSecrets(client, vaultAddress, group, "config", verbose)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error retrieving secret: %v", err)
 	}
 
-	user, ok := secretData["login"].(string)
-	if !ok {
-		fmt.Fprintf(os.Stderr, "Value for 'Login' is not a string\n")
+	if secretData["network"] == nil || secretData["network"] == "" {
+		log.Fatalf("error, network not definied. Check value in vault.")
 	}
-	password, ok := secretData["password"].(string)
-	if !ok {
-		fmt.Fprintf(os.Stderr, "Value for 'Password' is not a string\n")
-	}
-	network, ok := secretData["network"].(string)
-	if !ok {
-		fmt.Fprintf(os.Stderr, "Value for 'Network' is not a string\n")
-	}
+
+	network := fmt.Sprintf("%s", secretData["network"])
 
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: network = %s\n", network)
+		fmt.Fprintf(os.Stderr, "DEBUG MAIN: network = %s\n", network)
 	}
 
-	sessioncookie := webapi.Login(user, password, susemgr, verbose)
+	sessioncookie, err := webapi.SumaLogin(sumalogin, sumapassword, sumaurl, verbose)
+	if err != nil {
+		log.Fatalf("could not login, errorcode: %v", err)
+	}
 	if verbose {
 		_, err := fmt.Fprintf(os.Stdout, "DEBUG: Session Cookie %s\n", sessioncookie)
 		if err != nil {
@@ -212,16 +237,24 @@ func main() {
 
 	switch task {
 	case "add":
-		result := webapi.AddSystem(sessioncookie, susemgr, hostname, group, network, verbose)
+		result, err := webapi.SumaAddSystem(sessioncookie, susemgr, hostname, group, network, verbose)
+		if err != nil {
+			log.Fatalf("Could not add System to Suma, errorcode: %v", err)
+		}
 		if result != http.StatusOK {
 			fmt.Fprintf(os.Stderr, "An error occured, got http error %d", result)
 			os.Exit(1)
 		} else {
 			fmt.Printf("Successful add system %s to group %s\n", hostname, group)
-			fmt.Printf("Got result: %d\n", result)
+			if verbose {
+				fmt.Printf("Got result: %d\n", result)
+			}
 		}
 	case "delete":
-		result := webapi.DeleteSystem(sessioncookie, susemgr, hostname, network, verbose)
+		result, err := webapi.SumaDeleteSystem(sessioncookie, susemgr, hostname, network, verbose)
+		if err != nil {
+			log.Fatalf("Could not delete System from Suma, errorcode: %v", err)
+		}
 		if result != http.StatusOK {
 			fmt.Fprintf(os.Stderr, "An error occured, got http error %d", result)
 			os.Exit(1)

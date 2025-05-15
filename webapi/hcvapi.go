@@ -3,40 +3,42 @@ package webapi
 import (
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/hashicorp/vault/api"
 )
 
-func GetVaultSecrets(client *api.Client, vaultAddress, group string, verbose bool) (map[string]interface{}, error) {
+func VaultGetSecrets(client *api.Client, vaultAddress, group, path string, verbose bool) (map[string]interface{}, error) {
 
 	// Path to the secret
-	secretPath := fmt.Sprintf("kv-clab-%s/data/suma", group)
+	secretPath := fmt.Sprintf("kv-clab-%s/data/%s", group, path)
 	if verbose {
-		fmt.Printf("DEBUG HCVAPI: secretPath = %s\n", secretPath)
+		log.Printf("DEBUG HCVAPI VaultGetSecrets: secretPath = %s\n", secretPath)
 	}
 
 	// Retrieve the secret
 	secret, err := client.Logical().Read(secretPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading secret: %v", err)
+		log.Printf("error reading secret: %v\n", err)
+		return nil, err
 	}
 
 	// Extract and print the secret data
 	if secret == nil || secret.Data == nil {
-		fmt.Fprintf(os.Stderr, "No secret found at path: %s", secretPath)
+		log.Printf("no secret found at path: %s", secretPath)
+		return nil, fmt.Errorf("no secret found at path: %s", secretPath)
 	}
 
 	// For KV version 2, secret data is in the "data" field
 	secretData, ok := secret.Data["data"].(map[string]interface{})
 	if !ok {
-		fmt.Fprintf(os.Stderr, "Invalid secret data format")
+		log.Printf("invalid secret data format")
+		return nil, fmt.Errorf("invalid secret data format")
 	}
 
 	if verbose {
-		log.Println("DEBUG HCVAPI: Retrieved secret:")
+		log.Println("DEBUG HCVAPI VaultGetSecrets: Retrieved secret:")
 		for key := range secretData {
-			log.Printf("DEBUG HCVAPI: %s: *******\n", key)
+			log.Printf("DEBUG HCVAPI VaultGetSecrets: %s: *******\n", key)
 		}
 	}
 	return secretData, nil
@@ -73,7 +75,7 @@ func VaultLogin(roleID, secretID, vaultAddr string, verbose bool) (*api.Client, 
 	// Set the token received from authentication
 	client.SetToken(secret.Auth.ClientToken)
 	if verbose {
-		log.Println("DEBUG HCVAPI: Successful authenticate to Vault!")
+		log.Println("DEBUG HCVAPI VaultLogin: Successful authenticate to Vault!")
 	}
 	return client, nil
 }
@@ -93,7 +95,7 @@ func VaultLogout(client *api.Client, verbose bool) error {
 	}
 
 	if verbose {
-		log.Println("DEBUG HCVAPI: Successful logged out from Vault!")
+		log.Println("DEBUG HCVAPI VaultLogout: Successful logged out from Vault!")
 	}
 	return nil
 }
@@ -113,8 +115,8 @@ path "sys/policies/acl/%s_read_policy" {
 }`, group, group)
 
 	if verbose {
-		log.Printf("DEBUG HCVAPI: policyName: %s\n", policyName)
-		log.Printf("DEBUG HCVAPI: policyContent:%s\n", policyContent)
+		log.Printf("DEBUG HCVAPI VaultCreatePolicy: policyName: %s\n", policyName)
+		log.Printf("DEBUG HCVAPI VaultCreatePolicy: policyContent:%s\n", policyContent)
 	}
 
 	_, err = client.Logical().Write(fmt.Sprintf("sys/policies/acl/%s", policyName), map[string]interface{}{
@@ -125,7 +127,7 @@ path "sys/policies/acl/%s_read_policy" {
 	}
 
 	if verbose {
-		log.Printf("DEBUG HCVAPI: Policy created successfully: %s", policyName)
+		log.Printf("DEBUG HCVAPI VaultCreatePolicy: Policy created successfully: %s", policyName)
 	}
 
 	return policyName, nil
@@ -141,7 +143,7 @@ func VaultDeletePolicy(client *api.Client, group string, verbose bool) (err erro
 	}
 
 	if verbose {
-		log.Printf("DEBUG HCVAPI: Policy deleted successfully: %s", policyName)
+		log.Printf("DEBUG HCVAPI VaultDeletePolicy: Policy deleted successfully: %s", policyName)
 	}
 
 	return nil
@@ -163,7 +165,7 @@ func VaultCreateRole(client *api.Client, group, policyName string, verbose bool)
 	}
 
 	if verbose {
-		log.Printf("DEBUG HCVAPI: AppRole created successfully: %s", group)
+		log.Printf("DEBUG HCVAPI VaultCreateRole: AppRole created successfully: %s", group)
 	}
 
 	// Retrieve role ID for authentication
@@ -181,7 +183,7 @@ func VaultCreateRole(client *api.Client, group, policyName string, verbose bool)
 	}
 
 	if verbose {
-		log.Printf("DEBUG HCVAPI: Got roleID: %s\n", roleID)
+		log.Printf("DEBUG HCVAPI VaultCreateRole: Got roleID: %s\n", roleID)
 	}
 
 	// get secretID
@@ -199,7 +201,7 @@ func VaultCreateRole(client *api.Client, group, policyName string, verbose bool)
 	}
 
 	if verbose {
-		log.Println("DEBUG HCVAPI: Got secretID: #########")
+		log.Println("DEBUG HCVAPI VaultCreateRole: Got secretID: #########")
 	}
 
 	return roleID, secretID, nil
@@ -228,7 +230,7 @@ func VaultEnableKVv2(client *api.Client, path string, verbose bool) (err error) 
 
 	if _, exists := mounts[mountPath]; exists {
 		if verbose {
-			log.Printf("DEBUG HCVAPI: KV v2 is already enabled at: %s\n", path)
+			log.Printf("DEBUG HCVAPI VaultEnableKVv2: KV v2 is already enabled at: %s\n", path)
 		}
 		return nil
 	}
@@ -240,7 +242,7 @@ func VaultEnableKVv2(client *api.Client, path string, verbose bool) (err error) 
 	}
 
 	if verbose {
-		log.Printf("DEBUG HCVAPI: KV v2 successfully enabled at:%s\n", path)
+		log.Printf("DEBUG HCVAPI VaultEnableKVv2: KV v2 successfully enabled at:%s\n", path)
 	}
 	return nil
 }
@@ -261,7 +263,7 @@ func VaultDisableKVv2(client *api.Client, path string, verbose bool) (err error)
 
 	if _, exists := mounts[mountPath]; !exists {
 		if verbose {
-			log.Printf("DEBUG HCVAPI: KV v2 is already disabled: %s\n", path)
+			log.Printf("DEBUG HCVAPI VaultDisableKVv2: KV v2 is already disabled: %s\n", path)
 		}
 		return nil
 	}
@@ -273,7 +275,7 @@ func VaultDisableKVv2(client *api.Client, path string, verbose bool) (err error)
 	}
 
 	if verbose {
-		log.Printf("DEBUG HCVAPI: KV v2 successful disable path:%s\n", path)
+		log.Printf("DEBUG HCVAPI VaultDisableKVv2: KV v2 successful disable path:%s\n", path)
 	}
 	return nil
 }
@@ -307,7 +309,7 @@ func VaultUpdateSecret(client *api.Client, path, key, value string, verbose bool
 	}
 
 	if verbose {
-		log.Printf("DEBUG HCVAPI: Successful update secret on %s", path)
+		log.Printf("DEBUG HCVAPI VaultUpdateSecret: Successful update secret on %s", path)
 	}
 
 	return nil

@@ -14,68 +14,6 @@ import (
 // Patch osExit for testing
 var osExit = os.Exit
 
-type AuthRequest struct {
-	Login    string `json:"login"`
-	Password string `json:"password"`
-}
-
-type ResultSystemGetId struct {
-	Id   int    `json:"id"`
-	Name string `json:"name"`
-}
-
-type ResultSystemGetIp struct {
-	Ip   string `json:"ip"`
-	Name string `json:"hostname"`
-}
-
-type ResponseSystemGetId struct {
-	Success bool                `json:"success"`
-	Result  []ResultSystemGetId `json:"result"`
-}
-
-type ResponseSystemGetIp struct {
-	Success bool              `json:"success"`
-	Result  ResultSystemGetIp `json:"result"`
-}
-
-type ResponseGetApiCallList struct {
-	Name        string `json:"name"`
-	Parameters  string `json:"parameters"`
-	Exceptions  string `json:"string"`
-	ReturnValue string `json:"return"`
-}
-
-type responseUserListUsers struct {
-	Success bool `json:"success"`
-	Result  []struct {
-		Login string `json:"login"`
-	} `json:"result"`
-}
-
-type AddRemoveSystem struct {
-	SystemGroupName string `json:"systemGroupName"`
-	ServerIds       []int  `json:"serverIds"`
-	Add             bool   `json:"add"`
-}
-
-type AddUser struct {
-	Login     string `json:"login"`
-	Password  string `json:"password"`
-	FirstName string `json:"firstName"`
-	LastName  string `json:"lastName"`
-	Email     string `json:"email"`
-}
-
-type RemoveUser struct {
-	Login string `json:"login"`
-}
-
-type DeleteSystemType struct {
-	ServerId    int    `json:"sid"`
-	CleanupType string `json:"cleanupType"`
-}
-
 var isSystemInNetwork = func(pip, pnetwork string) bool {
 	// Define the IP address and the CIDR range
 	ip := net.ParseIP(pip)
@@ -89,12 +27,21 @@ var isSystemInNetwork = func(pip, pnetwork string) bool {
 
 }
 
-var getSystemID = func(sessioncookie, susemgr, hostname string, verbose bool) int {
+func sumaGetSystemID(sessioncookie, susemgr, hostname string, verbose bool) (id int, err error) {
 
+	type ResultSystemGetId struct {
+		Id   int    `json:"id"`
+		Name string `json:"name"`
+	}
+
+	type ResponseSystemGetId struct {
+		Success bool                `json:"success"`
+		Result  []ResultSystemGetId `json:"result"`
+	}
 	// Define the API endpoint
 	apiURL := fmt.Sprintf("%s%s", susemgr, "/rhn/manager/api")
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: apiURL =  %s\n", apiURL)
+		log.Printf("DEBUG SUMAAPI sumaGetSystemID: apiURL =  %s\n", apiURL)
 	}
 
 	/*
@@ -102,14 +49,14 @@ var getSystemID = func(sessioncookie, susemgr, hostname string, verbose bool) in
 	*/
 	apiMethodgetSystemID := fmt.Sprintf("%s%s%s", apiURL, "/system/getId?name=", hostname)
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: apiMethod = %s\n", apiMethodgetSystemID)
+		log.Printf("DEBUG SUMAAPI sumaGetSystemID: apiMethod = %s\n", apiMethodgetSystemID)
 	}
 
 	// Create a new HTTP request
 	req, err := http.NewRequest(http.MethodGet, apiMethodgetSystemID, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating request to get hostname, error: %s\n", err)
-		osExit(1)
+		log.Printf("error creating request to get hostname, error: %s\n", err)
+		return -1, err
 	}
 
 	// Add headers
@@ -123,13 +70,13 @@ var getSystemID = func(sessioncookie, susemgr, hostname string, verbose bool) in
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error sending request: %s\n", err)
-		osExit(1)
+		log.Printf("error sending request: %s\n", err)
+		return -1, err
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			fmt.Fprintln(os.Stderr, "Error closing response body:", err)
+			log.Printf("error closing response body: %v\n", err)
 		}
 	}()
 
@@ -142,20 +89,20 @@ var getSystemID = func(sessioncookie, susemgr, hostname string, verbose bool) in
 	// Read response body
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading http response: %s\n", err)
-		osExit(1)
+		log.Printf("error reading http response: %s\n", err)
+		return -1, err
 	}
 
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: Got resp.Body = %s\n", string(bodyBytes))
+		log.Printf("DEBUG SUMAAPI sumaGetSystemID: Got resp.Body = %s\n", string(bodyBytes))
 	}
 
 	// Unmarshal the JSON response into the struct
 	var rsp ResponseSystemGetId
 	err = json.Unmarshal(bodyBytes, &rsp)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error unmarshaling JSON: %s\n", err)
-		osExit(1)
+		log.Printf("error unmarshaling JSON: %s\n", err)
+		return -1, err
 	}
 
 	// Extract and print all fields
@@ -165,20 +112,30 @@ var getSystemID = func(sessioncookie, susemgr, hostname string, verbose bool) in
 	}
 
 	if foundID == 0 {
-		fmt.Fprintf(os.Stderr, "Host: %s not found in SUSE Manager on %s\n", hostname, susemgr)
-		osExit(1)
+		log.Printf("host: %s not found in SUSE Manager on %s\n", hostname, susemgr)
+		return -1, fmt.Errorf("host: %s not found in SUSE Manager on %s", hostname, susemgr)
 	}
 
-	return foundID
+	return foundID, nil
 
 }
 
-var getSystemIP = func(sessioncookie, susemgr string, id int, verbose bool) string {
+func sumaGetSystemIP(sessioncookie, susemgr string, id int, verbose bool) (foundIP string, err error) {
+
+	type ResultSystemGetIp struct {
+		Ip   string `json:"ip"`
+		Name string `json:"hostname"`
+	}
+
+	type ResponseSystemGetIp struct {
+		Success bool              `json:"success"`
+		Result  ResultSystemGetIp `json:"result"`
+	}
 
 	// Define the API endpoint
 	apiURL := fmt.Sprintf("%s%s", susemgr, "/rhn/manager/api")
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: apiURL =  %s\n", apiURL)
+		log.Printf("DEBUG SUMAAPI sumaGetSystemIP: apiURL =  %s\n", apiURL)
 	}
 
 	/*
@@ -186,14 +143,14 @@ var getSystemIP = func(sessioncookie, susemgr string, id int, verbose bool) stri
 	*/
 	apiMethodgetSystemIP := fmt.Sprintf("%s%s%d", apiURL, "/system/getNetwork?sid=", id)
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: apiMethod = %s\n", apiMethodgetSystemIP)
+		log.Printf("DEBUG SUMAAPI sumaGetSystemIP: apiMethod = %s\n", apiMethodgetSystemIP)
 	}
 
 	// Create a new HTTP request
 	req, err := http.NewRequest(http.MethodGet, apiMethodgetSystemIP, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating request to get IP from system, error: %s\n", err)
-		osExit(1)
+		log.Printf("error creating request to get IP from system, error: %s\n", err)
+		return "", err
 	}
 
 	// Add headers
@@ -207,74 +164,78 @@ var getSystemIP = func(sessioncookie, susemgr string, id int, verbose bool) stri
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error sending request: %s\n", err)
-		osExit(1)
+		log.Printf("error sending request: %s\n", err)
+		return "", err
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			fmt.Fprintln(os.Stderr, "Error closing response body:", err)
+			log.Printf("error closing response body: %v\n", err)
 		}
 	}()
 
 	// Check HTTP status
 	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "HTTP Request failed: HTTP %d\n", resp.StatusCode)
-		osExit(1)
+		log.Printf("HTTP Request failed: HTTP %d\n", resp.StatusCode)
+		return "", fmt.Errorf("HTTP Request failed: HTTP/%d", resp.StatusCode)
 	}
 
 	// Read response body
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading http response: %s\n", err)
-		osExit(1)
+		log.Printf("error reading http response: %s\n", err)
+		return "", err
 	}
 
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: Got resp.Body = %s\n", string(bodyBytes))
+		log.Printf("DEBUG SUMAAPI sumaGetSystemIP: Got resp.Body = %s\n", string(bodyBytes))
 	}
 	// Unmarshal the JSON response into the struct
 	var rsp ResponseSystemGetIp
 	err = json.Unmarshal(bodyBytes, &rsp)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error unmarshaling JSON: %s\n", err)
-		osExit(1)
+		log.Printf("error unmarshaling JSON: %s\n", err)
+		return "", err
 	}
 
 	// Extract and print all fields
-	foundIP := rsp.Result.Ip
+	foundIP = rsp.Result.Ip
 
 	if foundIP == "" {
-		fmt.Fprintf(os.Stderr, "ID: %d not found in SUSE Manager on %s\n", id, susemgr)
-		osExit(1)
+		log.Printf("ID: %d not found in SUSE Manager on %s\n", id, susemgr)
+		return "", fmt.Errorf("ID: %d not found in SUSE Manager on %s", id, susemgr)
 	}
 
-	fmt.Fprintf(os.Stderr, "DEBUG: Found IP = %s\n", foundIP)
-
-	return foundIP
+	if verbose {
+		log.Printf("DEBUG: Found IP = %s\n", foundIP)
+	}
+	return foundIP, nil
 
 }
 
 // Login try to login to SUSE Manager. Username, Password are get from Hashicorp Vault.
-func Login(username, password, susemgr string, verbose bool) string {
+func SumaLogin(username, password, susemgr string, verbose bool) (sessioncookie string, err error) {
 
-	if verbose {
-		log.Println("DEBUG SUMAAPI: Enter function Login")
-		log.Println("DEBUG SUMAAPI: ====================")
-		defer log.Println("DEBUG SUMAAPI: Leave function Login")
+	type AuthRequest struct {
+		Login    string `json:"login"`
+		Password string `json:"password"`
 	}
 
-	var sessioncookie string
+	if verbose {
+		log.Println("DEBUG SUMAAPI SumaLogin: Enter function Login")
+		log.Println("DEBUG SUMAAPI SumaLogin: ====================")
+		defer log.Println("DEBUG SUMAAPI SumaLogin: Leave function Login")
+	}
 
 	// Define the API endpoint
 	apiURL := fmt.Sprintf("%s%s", susemgr, "/rhn/manager/api")
 	if verbose {
-		log.Printf("DEBUG SUMAAPI: apiURL = %s\n", apiURL)
+		log.Printf("DEBUG SUMAAPI SumaLogin: apiURL = %s\n", apiURL)
 	}
 
 	apiMethod := fmt.Sprintf("%s%s", apiURL, "/auth/login")
 	if verbose {
-		log.Printf("DEBUG SUMAAPI: apiMethod = %s", apiMethod)
+		log.Printf("DEBUG SUMAAPI SumaLogin: apiMethod = %s", apiMethod)
 	}
 
 	// Create the authentication request payload
@@ -287,14 +248,14 @@ func Login(username, password, susemgr string, verbose bool) string {
 	payloadBytes, err := json.Marshal(authPayload)
 	if err != nil {
 		log.Printf("error marshalling payload: %v\n", err)
-		osExit(1)
+		return "", err
 	}
 
 	// Create an HTTP POST request
 	req, err := http.NewRequest("POST", apiMethod, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		log.Printf("error creating request: %v\n", err)
-		osExit(1)
+		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -303,7 +264,7 @@ func Login(username, password, susemgr string, verbose bool) string {
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("error sending request: %v\n", err)
-		osExit(1)
+		return "", err
 	}
 
 	defer func() {
@@ -317,7 +278,7 @@ func Login(username, password, susemgr string, verbose bool) string {
 
 	for _, cookie := range cookies {
 		if verbose {
-			log.Printf("DEBUG SUMAAPI: Cookie Name: %s, Cookie Value: %s, Cookie MaxAge: %d\n", cookie.Name, cookie.Value, cookie.MaxAge)
+			log.Printf("DEBUG SUMAAPI SumaLogin: Cookie Name: %s, Cookie Value: %s, Cookie MaxAge: %d\n", cookie.Name, cookie.Value, cookie.MaxAge)
 		}
 		if cookie.Name == "pxt-session-cookie" && cookie.MaxAge == 3600 {
 			sessioncookie = cookie.Value
@@ -325,68 +286,74 @@ func Login(username, password, susemgr string, verbose bool) string {
 	}
 
 	if verbose {
-		log.Printf("DEBUG SUMAAPI: Session Cookie = %s\n", sessioncookie)
-		// Print the response status
-		log.Printf("DEBUG SUMAAPI: Response status = %s\n", resp.Status)
+		log.Printf("DEBUG SUMAAPI SumaLogin: Session Cookie = %s\n", sessioncookie)
+		log.Printf("DEBUG SUMAAPI SumaLogin: Response status = %s\n", resp.Status)
 	}
 
 	// Handle the response body if needed
 	var responseBody bytes.Buffer
 	_, err = responseBody.ReadFrom(resp.Body)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Got error to read from respone body.\n")
-		osExit(1)
+		log.Printf("got error to read from respone body.\n")
+		return "", err
 	}
 
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: Response body =  %s\n", responseBody.String())
+		log.Printf("DEBUG SUMAAPI SumaLogin: Response body =  %s\n", responseBody.String())
 	}
 
-	return sessioncookie
+	return sessioncookie, nil
 }
 
 // AddSystem add a System to a SUSE Manager SystemGroup.
-func AddSystem(sessioncookie, susemgr, hostname, group, network string, verbose bool) int {
+func SumaAddSystem(sessioncookie, susemgr, hostname, group, network string, verbose bool) (statuscode int, err error) {
+
+	type AddRemoveSystem struct {
+		SystemGroupName string `json:"systemGroupName"`
+		ServerIds       []int  `json:"serverIds"`
+		Add             bool   `json:"add"`
+	}
 
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: Enter function AddSystem\n")
-		fmt.Fprintf(os.Stderr, "DEBUG: ========================\n")
-		defer fmt.Fprintf(os.Stderr, "DEBUG: Leave function AddSystem \n")
+		log.Println("DEBUG SUMAAPI SumaAddSystem: Enter function")
+		log.Println("DEBUG SUMAAPI SumaAddSystem: ==============")
+		defer log.Println("DEBUG SUMAAPI SumaAddSystem: Leave function")
 	}
 
-	/*
-	 add System to Group
-	*/
-	foundID := getSystemID(sessioncookie, susemgr, hostname, verbose)
+	foundID, err := sumaGetSystemID(sessioncookie, susemgr, hostname, verbose)
+	if err != nil {
+		log.Printf("could not get system id, errorcode = %v", err)
+		return -1, err
+	}
 
 	if foundID == 0 {
-		fmt.Fprintf(os.Stderr, "Did not find the system in SUSE Manager.\n")
-		osExit(1)
+		return -1, fmt.Errorf("did not found the system in SUSE Manager.")
 	}
 
-	foundIP := getSystemIP(sessioncookie, susemgr, foundID, verbose)
+	foundIP, err := sumaGetSystemIP(sessioncookie, susemgr, foundID, verbose)
+	if err != nil {
+		log.Fatalf("Could not get IP, errorcode: %v", err)
+	}
 
 	if foundIP == "" {
-		fmt.Fprintf(os.Stderr, "Did not find the system ID %d in SUSE Manager.\n", foundID)
-		osExit(1)
+		return -1, fmt.Errorf("did not found the system ID %d in SUSE Manager.", foundID)
 	}
 
 	isValid := isSystemInNetwork(foundIP, network)
 
 	if !isValid {
-		fmt.Fprintf(os.Stderr, "System cannot be added. The system does not belong to the permitted network!\n")
-		osExit(1)
+		return -1, fmt.Errorf("system cannot be added. The system does not belong to the permitted network!")
 	}
 
 	// Define the API endpoint
 	apiURL := fmt.Sprintf("%s%s", susemgr, "/rhn/manager/api")
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: apiURL =  %s\n", apiURL)
+		log.Printf("DEBUG SUMAAPI SumaAddSystem: apiURL =  %s\n", apiURL)
 	}
 
 	apiMethodAddOrRemoveSystems := fmt.Sprintf("%s%s", apiURL, "/systemgroup/addOrRemoveSystems")
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: apiMethod = %s\n", apiMethodAddOrRemoveSystems)
+		log.Printf("DEBUG SUMAAPI SumaAddSystem: apiMethod = %s\n", apiMethodAddOrRemoveSystems)
 	}
 
 	// Create the authentication request payload
@@ -399,19 +366,19 @@ func AddSystem(sessioncookie, susemgr, hostname, group, network string, verbose 
 	// Marshal the payload to JSON
 	payloadBytes, err := json.Marshal(AddRemoveSystemPayload)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error marshalling payload: %v\n", err)
-		osExit(1)
+		log.Printf("Error marshalling payload: %v\n", err)
+		return -1, err
 	}
 
 	if verbose {
-		fmt.Printf("DEBUG: Paylod =  %v\n", string(payloadBytes))
+		log.Printf("DEBUG SUMAAPI SumaAddSystem: Payload =  %v\n", string(payloadBytes))
 	}
 
 	// Create an HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, apiMethodAddOrRemoveSystems, bytes.NewBuffer(payloadBytes))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
-		osExit(1)
+		log.Printf("error creating request: %v\n", err)
+		return -1, err
 	}
 
 	// Add headers
@@ -425,74 +392,80 @@ func AddSystem(sessioncookie, susemgr, hostname, group, network string, verbose 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error sending request: %v\n", err)
-		osExit(1)
+		log.Printf("error sending request: %v\n", err)
+		return -1, err
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			fmt.Fprintln(os.Stderr, "Error closing response body:", err)
+			log.Printf("error closing response body:", err)
 		}
 	}()
 
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: Add Node: %v\n", resp)
+		log.Printf("DEBUG SUMAAPI SumaAddSystem: Add Node: %v\n", resp)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "HTTP Request failed: HTTP %d\n", resp.StatusCode)
-		osExit(1)
+		log.Printf("HTTP Request failed: HTTP %d\n", resp.StatusCode)
+		return -1, err
 	}
 
-	return resp.StatusCode
+	return resp.StatusCode, nil
 
 }
 
 // DeleteSystem delete a System from the SUSE Manager . This implies, that it is also deleted from the SUSE Manager SystemGroup.
 // To ensure, that DeleteSystem could not delete other Systems from o differen IP range, the procedure check if the IP belongs
 // to the IP range we get from hashicorp vault.
-func DeleteSystem(sessioncookie, susemgr, hostname, network string, verbose bool) int {
+func SumaDeleteSystem(sessioncookie, susemgr, hostname, network string, verbose bool) (statsucode int, err error) {
+
+	type DeleteSystemType struct {
+		ServerId    int    `json:"sid"`
+		CleanupType string `json:"cleanupType"`
+	}
 
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: Enter function DeleteSystem\n")
-		fmt.Fprintf(os.Stderr, "DEBUG: ===========================\n")
-		defer fmt.Fprintf(os.Stderr, "DEBUG: Leave function DeleteSystem \n")
+		log.Println("DEBUG SUMAAPI SumeDeleteSystem: Enter function")
+		log.Println("DEBUG SUMAAPI SumeDeleteSystem: ==============")
+		defer log.Println("DEBUG SUMAAPI SumeDeleteSystem: Leave function")
 	}
 
-	/*
-	 delete System
-	*/
-
-	foundID := getSystemID(sessioncookie, susemgr, hostname, verbose)
+	foundID, err := sumaGetSystemID(sessioncookie, susemgr, hostname, verbose)
+	if err != nil {
+		log.Printf("could not get system id, errorcode = %v\n", err)
+		return -1, err
+	}
 
 	if foundID == 0 {
-		fmt.Fprintf(os.Stderr, "Did not find the system in SUSE Manager.\n")
-		osExit(1)
+		return -1, fmt.Errorf("Did not find the system in SUSE Manager.")
 	}
 
-	foundIP := getSystemIP(sessioncookie, susemgr, foundID, verbose)
+	foundIP, err := sumaGetSystemIP(sessioncookie, susemgr, foundID, verbose)
+	if err != nil {
+		log.Printf("Could not get IP, errorcode: %v", err)
+		return -1, err
+	}
 
 	if foundIP == "" {
-		fmt.Fprintf(os.Stderr, "Did not find the system ID %d in SUSE Manager.\n", foundID)
-		osExit(1)
+		return -1, fmt.Errorf("did not find the system ID %d in SUSE Manager.", foundID)
 	}
 
 	isValid := isSystemInNetwork(foundIP, network)
 
 	if !isValid {
-		fmt.Fprintf(os.Stderr, "%s cannot be deleted. The system does not belong to the permitted network of the group!\n", hostname)
-		osExit(1)
+		return -1, fmt.Errorf("%s cannot be deleted. The system does not belong to the permitted network of the group!", hostname)
 	}
 
 	// Define the API endpoint
 	apiURL := fmt.Sprintf("%s%s", susemgr, "/rhn/manager/api")
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: apiURL =  %s\n", apiURL)
+		log.Printf("DEBUG SUMAAPI SumaDeleteSystem: apiURL =  %s\n", apiURL)
 	}
 
 	apiDeleteSystems := fmt.Sprintf("%s%s", apiURL, "/system/deleteSystem")
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: apiMethod = %s\n", apiDeleteSystems)
+		log.Printf("DEBUG SUMAAPI SumaDeleteSystem: apiMethod = %s\n", apiDeleteSystems)
 	}
 
 	// Create the authentication request payload
@@ -504,19 +477,19 @@ func DeleteSystem(sessioncookie, susemgr, hostname, network string, verbose bool
 	// Marshal the payload to JSON
 	payloadBytes, err := json.Marshal(DeleteSystemPayload)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error marshalling payload: %v\n", err)
-		osExit(1)
+		log.Printf("error marshalling payload: %v\n", err)
+		return -1, err
 	}
 
 	if verbose {
-		fmt.Printf("DEBUG: Paylod =  %v\n", string(payloadBytes))
+		log.Printf("DEBUG SUMAAPI SumaDeleteSystem: Paylod =  %v\n", string(payloadBytes))
 	}
 
 	// Create an HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, apiDeleteSystems, bytes.NewBuffer(payloadBytes))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
-		osExit(1)
+		log.Printf("error creating request: %v\n", err)
+		return -1, err
 	}
 
 	// Add headers
@@ -530,30 +503,36 @@ func DeleteSystem(sessioncookie, susemgr, hostname, network string, verbose bool
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error sending request: %v\n", err)
-		osExit(1)
+		log.Printf("error sending request: %v\n", err)
+		return -1, err
 	}
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			fmt.Fprintln(os.Stderr, "Error closing response body:", err)
+			log.Printf("error closing response body: %v\n", err)
 		}
 	}()
 
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG: Delete Node: %v\n", resp)
+		log.Printf("DEBUG SUMAAPI SumaDeleteSystem: Delete Node: %v\n", resp)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "HTTP Request failed: HTTP %d\n", resp.StatusCode)
-		osExit(1)
+		return -1, fmt.Errorf("HTTP Request failed: HTTP/%d", resp.StatusCode)
 	}
 
-	return resp.StatusCode
+	return resp.StatusCode, nil
 
 }
 
 func sumaCheckUser(sessioncookie, group, susemgrurl string, verbose bool) (exists bool) {
+
+	type responseUserListUsers struct {
+		Success bool `json:"success"`
+		Result  []struct {
+			Login string `json:"login"`
+		} `json:"result"`
+	}
 
 	if verbose {
 		log.Println("DEBUG SUMAAPI sumaCheckUser: Enter function sumaCheckUser")
@@ -636,7 +615,15 @@ func sumaCheckUser(sessioncookie, group, susemgrurl string, verbose bool) (exist
 	return false
 }
 
-func SumaAddUser(sessioncookie, group, grouppassword, susemgrurl string, verbose bool) int {
+func SumaAddUser(sessioncookie, group, grouppassword, susemgrurl string, verbose bool) (statuscode int, err error) {
+
+	type AddUser struct {
+		Login     string `json:"login"`
+		Password  string `json:"password"`
+		FirstName string `json:"firstName"`
+		LastName  string `json:"lastName"`
+		Email     string `json:"email"`
+	}
 
 	if verbose {
 		log.Println("DEBUG SUMAAPI SumaAddUser: Enter function")
@@ -675,7 +662,7 @@ func SumaAddUser(sessioncookie, group, grouppassword, susemgrurl string, verbose
 	payloadBytes, err := json.Marshal(AddUserPayload)
 	if err != nil {
 		log.Printf("error marshalling payload: %v\n", err)
-		osExit(1)
+		return 1, err
 	}
 
 	if verbose {
@@ -687,7 +674,7 @@ func SumaAddUser(sessioncookie, group, grouppassword, susemgrurl string, verbose
 
 	if err != nil {
 		log.Printf("error creating request: %v\n", err)
-		osExit(1)
+		return 1, err
 	}
 
 	// Add headers
@@ -702,7 +689,7 @@ func SumaAddUser(sessioncookie, group, grouppassword, susemgrurl string, verbose
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("error sending request: %v\n", err)
-		osExit(1)
+		return 1, err
 	}
 
 	defer func() {
@@ -712,18 +699,22 @@ func SumaAddUser(sessioncookie, group, grouppassword, susemgrurl string, verbose
 	}()
 
 	if verbose {
-		log.Printf("DEBUG SUMAAPI: Add User: %v\n", resp)
+		log.Printf("DEBUG SUMAAPI SumaAddUser: Add User: %v\n", resp)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("HTTP Request failed: HTTP %d\n", resp.StatusCode)
-		osExit(1)
+		return 1, err
 	}
 
-	return resp.StatusCode
+	return resp.StatusCode, nil
 }
 
 func SumaRemoveUser(sessioncookie, group, susemgrurl string, verbose bool) (err error) {
+
+	type RemoveUser struct {
+		Login string `json:"login"`
+	}
 
 	if verbose {
 		log.Println("DEBUG SUMAAPI SumaRemoveUser: Enter function")
@@ -759,7 +750,8 @@ func SumaRemoveUser(sessioncookie, group, susemgrurl string, verbose bool) (err 
 	// Marshal the payload to JSON
 	payloadBytes, err := json.Marshal(RemoveUserPayload)
 	if err != nil {
-		log.Fatalf("error marshalling payload: %v\n", err)
+		log.Printf("error marshalling payload: %v\n", err)
+		return err
 	}
 
 	if verbose {
@@ -770,7 +762,8 @@ func SumaRemoveUser(sessioncookie, group, susemgrurl string, verbose bool) (err 
 	req, err := http.NewRequest(http.MethodPost, apiUserRemove, bytes.NewBuffer(payloadBytes))
 
 	if err != nil {
-		log.Fatalf("error creating request: %v\n", err)
+		log.Printf("error creating request: %v\n", err)
+		return err
 	}
 
 	// Add headers
@@ -807,6 +800,12 @@ func SumaRemoveUser(sessioncookie, group, susemgrurl string, verbose bool) (err 
 }
 
 func GetApiList(sessioncookie, susemgr string, verbose bool) {
+	type ResponseGetApiCallList struct {
+		Name        string `json:"name"`
+		Parameters  string `json:"parameters"`
+		Exceptions  string `json:"string"`
+		ReturnValue string `json:"return"`
+	}
 
 	log.Printf("DEBUG SUMAAPI GetApiList: sessioncookie =  %s\n", sessioncookie)
 
@@ -874,15 +873,4 @@ func GetApiList(sessioncookie, susemgr string, verbose bool) {
 	}
 
 	fmt.Printf("%v", rsp)
-
-	// Extract and print all fields
-	// foundIP := rsp.Result.Ip
-
-	// if foundIP == "" {
-	// 	fmt.Fprintf(os.Stderr, "ID: %d not found in SUSE Manager on %s\n", id, susemgr)
-	// 	osExit(1)
-	// }
-
-	// fmt.Fprintf(os.Stderr, "DEBUG: Found IP = %s\n", foundIP)
-
 }
