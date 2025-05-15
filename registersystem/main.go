@@ -32,7 +32,6 @@ var (
 	secretID     string
 	group        string
 	hostname     string
-	susemgr      string
 	vaultAddress string
 	task         string
 )
@@ -54,14 +53,13 @@ func registerFlags(fs *flag.FlagSet) {
 	fs.StringVar(&secretID, "s", "", "Secret ID")
 	fs.StringVar(&group, "g", "", "SUSE Manager Group")
 	fs.StringVar(&hostname, "h", "", "Hostname")
-	fs.StringVar(&susemgr, "m", "", "SUSE Manager URL")
 	fs.StringVar(&vaultAddress, "a", "", "Vault Address")
 	fs.StringVar(&task, "t", "", "Task [add | delete]")
 	fs.BoolVar(&verbose, "v", false, "Verbose output")
 }
 
 func customUsage() {
-	fmt.Fprintf(os.Stderr, "Usage of %s: -r [roleID] -s [secretID] -a [URL Vault] -m [URL SUSE Manager] -h [hostname] -g [Group] -t [add|delete] -v [verbose]\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "Usage of %s: -r [roleID] -s [secretID] -a [URL Vault] -h [hostname] -g [Group] -t [add|delete] -v [verbose]\n\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "The program add a system to a SUSE Manager Systemgroup or delete a system from the SUSE Manager.\n\nParameter:\n")
 
 	flag.PrintDefaults()
@@ -97,50 +95,40 @@ func getTask(line string) string {
 	}
 }
 
-func checkFlag(proleID, psecretID, pgroup, phostname, psusemgr, pvault, ptask string) bool {
+func checkFlag(proleID, psecretID, pgroup, phostname, pvault, ptask string) bool {
 
 	if !isFQDN(phostname) || isEmpty(phostname) {
-		fmt.Fprintf(os.Stderr, "Please enter the FQDN Hostname.")
+		log.Printf("Please enter the FQDN Hostname.")
 		return false
 	}
 
 	if !isURL(pvault) || isEmpty(pvault) {
-		fmt.Fprintf(os.Stderr, "Please enter a valid URL for vault.")
-		return false
-	}
-
-	if !isURL(psusemgr) || isEmpty(psusemgr) {
-		fmt.Fprintf(os.Stderr, "Please enter a valid URL for SUSE Manager.")
+		log.Printf("Please enter a valid URL for vault.")
 		return false
 	}
 
 	if isEmpty(proleID) {
-		fmt.Fprintf(os.Stderr, "Please enter a roleID.")
+		log.Printf("Please enter a roleID.")
 		return false
 	}
 
 	if isEmpty(psecretID) {
-		fmt.Fprintf(os.Stderr, "Please enter a secretID.")
+		log.Printf("Please enter a secretID.")
 		return false
 	}
 
 	if isEmpty(pgroup) {
-		fmt.Fprintf(os.Stderr, "Please enter a SUSE Manager group.")
-		return false
-	}
-
-	if isEmpty(psusemgr) {
-		fmt.Fprintf(os.Stderr, "Please enter the URL of the SUSE Manager.")
+		log.Printf("Please enter a SUSE Manager group.")
 		return false
 	}
 
 	if isEmpty(pvault) {
-		fmt.Fprintf(os.Stderr, "Please enter the URL of the Hashicorp Vault.")
+		log.Printf("Please enter the URL of the Hashicorp Vault.")
 		return false
 	}
 
 	if isEmpty(ptask) {
-		fmt.Fprintf(os.Stderr, "Please enter a task.")
+		log.Printf("Please enter a task.")
 		return false
 	}
 
@@ -154,14 +142,13 @@ func main() {
 	flag.Parse()
 
 	if verbose {
-		fmt.Println("DEBUG: verbose: ", verbose)
-		fmt.Println("DEBUG: roleID:", roleID)
-		fmt.Println("DEBUG: secretID:", secretID)
-		fmt.Println("DEBUG: group:", group)
-		fmt.Println("DEBUG: hostname:", hostname)
-		fmt.Println("DEBUG: susemgr:", susemgr)
-		fmt.Println("DEBUG: vaultAddress:", vaultAddress)
-		fmt.Println("DEBUG: task:", task)
+		fmt.Println("DEBUG MAIN: verbose: ", verbose)
+		fmt.Println("DEBUG MAIN: roleID:", roleID)
+		fmt.Println("DEBUG MAIN: secretID:", secretID)
+		fmt.Println("DEBUG MAIN: group:", group)
+		fmt.Println("DEBUG MAIN: hostname:", hostname)
+		fmt.Println("DEBUG MAIN: vaultAddress:", vaultAddress)
+		fmt.Println("DEBUG MAIN: task:", task)
 	}
 
 	// no args
@@ -170,14 +157,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if !checkFlag(roleID, secretID, group, hostname, susemgr, vaultAddress, task) {
+	if !checkFlag(roleID, secretID, group, hostname, vaultAddress, task) {
 		os.Exit(1)
 	}
 
 	task = getTask(task)
 	if task == "error" {
-		fmt.Fprintf(os.Stderr, "Please enter a valid task [add | delete].\n")
-		os.Exit(1)
+		log.Fatalf("please enter a valid task [add | delete].")
 	}
 
 	client, err := webapi.VaultLogin(roleID, secretID, vaultAddress, verbose)
@@ -210,7 +196,7 @@ func main() {
 
 	secretData, err := webapi.VaultGetSecrets(client, vaultAddress, group, "config", verbose)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error retrieving secret: %v", err)
+		log.Fatalf("error retrieving secret: %v", err)
 	}
 
 	if secretData["network"] == nil || secretData["network"] == "" {
@@ -220,7 +206,7 @@ func main() {
 	network := fmt.Sprintf("%s", secretData["network"])
 
 	if verbose {
-		fmt.Fprintf(os.Stderr, "DEBUG MAIN: network = %s\n", network)
+		log.Printf("DEBUG MAIN: network = %s\n", network)
 	}
 
 	sessioncookie, err := webapi.SumaLogin(sumalogin, sumapassword, sumaurl, verbose)
@@ -228,16 +214,12 @@ func main() {
 		log.Fatalf("could not login, errorcode: %v", err)
 	}
 	if verbose {
-		_, err := fmt.Fprintf(os.Stdout, "DEBUG: Session Cookie %s\n", sessioncookie)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error writing to stdout:", err)
-		}
-
+		log.Printf("DEBUG MAIN: Session Cookie %s\n", sessioncookie)
 	}
 
 	switch task {
 	case "add":
-		result, err := webapi.SumaAddSystem(sessioncookie, susemgr, hostname, group, network, verbose)
+		result, err := webapi.SumaAddSystem(sessioncookie, sumaurl, hostname, group, network, verbose)
 		if err != nil {
 			log.Fatalf("Could not add System to Suma, errorcode: %v", err)
 		}
@@ -251,19 +233,19 @@ func main() {
 			}
 		}
 	case "delete":
-		result, err := webapi.SumaDeleteSystem(sessioncookie, susemgr, hostname, network, verbose)
+		result, err := webapi.SumaDeleteSystem(sessioncookie, sumaurl, hostname, network, verbose)
 		if err != nil {
 			log.Fatalf("Could not delete System from Suma, errorcode: %v", err)
 		}
 		if result != http.StatusOK {
-			fmt.Fprintf(os.Stderr, "An error occured, got http error %d", result)
-			os.Exit(1)
+			log.Fatalf("an error occured, got http error %d", result)
 		} else {
-			fmt.Printf("Successful delete system %s\n", hostname)
-			fmt.Printf("Got result: %d\n", result)
+			log.Printf("successful delete system %s\n", hostname)
+			if verbose {
+				log.Printf("got result: %d\n", result)
+			}
 		}
 
 	}
-
 	os.Exit(0)
 }
