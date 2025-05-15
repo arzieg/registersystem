@@ -177,6 +177,29 @@ func main() {
 		log.Fatalf("error logging in to Vault: %v", err)
 	}
 
+	defer webapi.VaultLogout(client, verbose)
+
+	suma, err := webapi.GetVaultSecrets(client, vaultAddress, "dagobah", verbose)
+	if err != nil {
+		log.Fatalf("error getting vault secrets: %v", err)
+	}
+
+	if suma["login"] == nil || suma["login"] == "" {
+		log.Fatalf("error, suma login user not definied. Check value in vault.")
+	}
+
+	if suma["password"] == nil || suma["password"] == "" {
+		log.Fatalf("error, suma password not definied. Check value in vault.")
+	}
+
+	if suma["url"] == nil || suma["url"] == "" {
+		log.Fatalf("error, suma url not definied. Check value in vault.")
+	}
+
+	/* TODO
+	Add user to suma
+	*/
+
 	switch task {
 	case "add":
 		{
@@ -242,10 +265,10 @@ func main() {
 		}
 	}
 	/* logout */
-	err = webapi.VaultLogout(client, verbose)
-	if err != nil {
-		log.Fatalf("Error logout from Vault: %v", err)
-	}
+	// err = webapi.VaultLogout(client, verbose)
+	// if err != nil {
+	// 	log.Fatalf("Error logout from Vault: %v", err)
+	// }
 
 	os.Exit(0)
 }
