@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/vault/api"
 )
 
+// VaultGetSecrets reads the secrets
 func VaultGetSecrets(client *api.Client, vaultAddress, group, path string, verbose bool) (map[string]interface{}, error) {
 
 	// Path to the secret
@@ -44,6 +45,7 @@ func VaultGetSecrets(client *api.Client, vaultAddress, group, path string, verbo
 	return secretData, nil
 }
 
+// VaultLogin is the login procedure and return a pointer to the client-session.
 func VaultLogin(roleID, secretID, vaultAddr string, verbose bool) (*api.Client, error) {
 	// Create Vault client
 	config := &api.Config{Address: vaultAddr}
@@ -80,7 +82,7 @@ func VaultLogin(roleID, secretID, vaultAddr string, verbose bool) (*api.Client, 
 	return client, nil
 }
 
-// LogoutFromVault revokes the current Vault token
+// VaultLogout revokes the current vault token
 func VaultLogout(client *api.Client, verbose bool) error {
 	// Get the token to revoke
 	token := client.Token()
@@ -100,6 +102,7 @@ func VaultLogout(client *api.Client, verbose bool) error {
 	return nil
 }
 
+// VaultCreatePolicy create the vault policy for the role.
 func VaultCreatePolicy(client *api.Client, group string, verbose bool) (policyName string, err error) {
 
 	policyName = fmt.Sprintf("%s_read_policy", group)
@@ -136,6 +139,7 @@ path "auth/token/lookup-self" {
 	return policyName, nil
 }
 
+// VaultDeletePolicy remove the vault policy
 func VaultDeletePolicy(client *api.Client, group string, verbose bool) (err error) {
 
 	policyName := fmt.Sprintf("%s_read_policy", group)
@@ -152,6 +156,7 @@ func VaultDeletePolicy(client *api.Client, group string, verbose bool) (err erro
 	return nil
 }
 
+// VaultCreateRole create a new role (user)
 func VaultCreateRole(client *api.Client, group, policyName string, verbose bool) (roleID, secretID string, err error) {
 
 	roleData := map[string]interface{}{
@@ -210,6 +215,7 @@ func VaultCreateRole(client *api.Client, group, policyName string, verbose bool)
 	return roleID, secretID, nil
 }
 
+// VaultRemoveRole delete a role
 func VaultRemoveRole(client *api.Client, group string, verbose bool) (err error) {
 
 	// Write the role to Vault
@@ -226,6 +232,7 @@ func VaultRemoveRole(client *api.Client, group string, verbose bool) (err error)
 	return nil
 }
 
+// VaultEnableKVv2 enable a KV Store in Version 2 in hashicop vault
 func VaultEnableKVv2(client *api.Client, path string, verbose bool) (err error) {
 
 	mountConfig := map[string]interface{}{
@@ -266,6 +273,7 @@ func VaultEnableKVv2(client *api.Client, path string, verbose bool) (err error) 
 	return nil
 }
 
+// VaultDisableKVv2 remove the KV secret store
 func VaultDisableKVv2(client *api.Client, path string, verbose bool) (err error) {
 
 	// Vault API path for disabling secrets engine
@@ -299,6 +307,7 @@ func VaultDisableKVv2(client *api.Client, path string, verbose bool) (err error)
 	return nil
 }
 
+// VaultUpdateSecret update one secret in the vault.
 func VaultUpdateSecret(client *api.Client, path, key, value string, verbose bool) error {
 	// Read existing secrets
 	secret, err := client.Logical().Read(path)

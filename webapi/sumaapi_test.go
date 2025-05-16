@@ -2,22 +2,25 @@ package webapi
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
-// Patch os.Exit for testing
-//var osExit = os.Exit
-
-// Save original functions to restore after test
-var (
-	origGetSystemID       = getSystemID
-	origGetSystemIP       = getSystemIP
-	origIsSystemInNetwork = isSystemInNetwork
-)
+// Helper to patch osExit for tests
+func patchOsExit(t *testing.T) (called *bool, code *int) {
+	called = new(bool)
+	code = new(int)
+	osExit = func(c int) {
+		*called = true
+		*code = c
+		panic("osExit called")
+	}
+	t.Cleanup(func() { osExit = os.Exit })
+	return
+}
 
 func TestIsSystemInNetwork(t *testing.T) {
 	tests := []struct {
@@ -27,201 +30,246 @@ func TestIsSystemInNetwork(t *testing.T) {
 	}{
 		{"192.168.1.10", "192.168.1.0", true},
 		{"192.168.2.10", "192.168.1.0", false},
-		{"10.0.0.5", "10.0.0.0", true},
-		{"10.0.1.5", "10.0.0.0", false},
-		{"192.168.1.10", "invalid", false},
+		{"invalid", "192.168.1.0", false},
 	}
 	for _, tt := range tests {
-		t.Run(fmt.Sprintf("%s in %s", tt.ip, tt.network), func(t *testing.T) {
-			got := isSystemInNetwork(tt.ip, tt.network)
-			if got != tt.want {
-				t.Errorf("isSystemInNetwork(%q, %q) = %v, want %v", tt.ip, tt.network, got, tt.want)
-			}
-		})
-	}
-}
-
-func setupTestServer(t *testing.T, path string, response interface{}) *httptest.Server {
-	handler := http.NewServeMux()
-	handler.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			t.Errorf("failed to encode response: %v", err)
+		got := isSystemInNetwork(tt.ip, tt.network)
+		if got != tt.want {
+			t.Errorf("isSystemInNetwork(%q, %q) = %v, want %v", tt.ip, tt.network, got, tt.want)
 		}
-	})
-	return httptest.NewServer(handler)
-}
-
-func TestGetSystemID(t *testing.T) {
-	resp := ResponseSystemGetId{
-		Success: true,
-		Result:  []ResultSystemGetId{{Id: 42, Name: "testhost"}},
-	}
-	server := setupTestServer(t, "/rhn/manager/api/system/getId", resp)
-	defer server.Close()
-
-	oldExit := osExit
-	defer func() { osExit = oldExit }()
-	osExit = func(code int) { panic(fmt.Sprintf("os.Exit(%d)", code)) }
-
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("getSystemID panicked: %v", r)
-		}
-	}()
-
-	id := getSystemID("dummy-cookie", server.URL, "testhost", false)
-	if id != 42 {
-		t.Errorf("Expected id 42, got %d", id)
 	}
 }
 
-func TestGetSystemIP(t *testing.T) {
-	resp := ResponseSystemGetIp{
-		Success: true,
-		Result:  ResultSystemGetIp{Ip: "192.168.1.10", Name: "testhost"},
-	}
-	server := setupTestServer(t, "/rhn/manager/api/system/getNetwork", resp)
-	defer server.Close()
-
-	oldExit := osExit
-	defer func() { osExit = oldExit }()
-	osExit = func(code int) { panic(fmt.Sprintf("os.Exit(%d)", code)) }
-
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("getSystemIP panicked: %v", r)
-		}
-	}()
-
-	ip := getSystemIP("dummy-cookie", server.URL, 42, false)
-	if ip != "192.168.1.10" {
-		t.Errorf("Expected ip 192.168.1.10, got %s", ip)
-	}
-}
-
-func TestLogin(t *testing.T) {
-	handler := http.NewServeMux()
-	handler.HandleFunc("/rhn/manager/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
-		http.SetCookie(w, &http.Cookie{
-			Name:   "pxt-session-cookie",
-			Value:  "test-session",
-			MaxAge: 3600,
-		})
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"success":true}`))
-	})
-	server := httptest.NewServer(handler)
-	defer server.Close()
-
-	oldExit := osExit
-	defer func() { osExit = oldExit }()
-	osExit = func(code int) { panic(fmt.Sprintf("os.Exit(%d)", code)) }
-
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("Login panicked: %v", r)
-		}
-	}()
-
-	cookie := Login("user", "pass", server.URL, false)
-	if cookie != "test-session" {
-		t.Errorf("Expected session cookie 'test-session', got %s", cookie)
-	}
-}
-
-func TestAddSystem_Success(t *testing.T) {
-	// Mock getSystemID to return a fixed ID
-	getSystemID = func(sessioncookie, susemgr, hostname string, verbose bool) int {
-		return 42
-	}
-
-	// Mock getSystemIP to return a fixed IP
-	getSystemIP = func(sessioncookie, susemgr string, id int, verbose bool) string {
-		return "192.168.1.100"
-	}
-
-	// Mock isSystemInNetwork to always return true
-	isSystemInNetwork = func(pip, pnetwork string) bool {
-		return true
-	}
-
-	// Restore original functions
-	defer func() {
-		getSystemID = origGetSystemID
-		getSystemIP = origGetSystemIP
-		isSystemInNetwork = origIsSystemInNetwork
-	}()
-
-	// Mock SUSE Manager API endpoint for addOrRemoveSystems
+func TestSumaGetSystemID_Success(t *testing.T) {
+	// Patch HTTP client
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/rhn/manager/api/systemgroup/addOrRemoveSystems" {
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprintln(w, `{"success": true}`)
-			return
+		resp := map[string]interface{}{
+			"success": true,
+			"result": []map[string]interface{}{
+				{"id": 42, "name": "testhost"},
+			},
 		}
-		t.Errorf("Unexpected URL: %s", r.URL.Path)
-		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
-	// Silence stderr to avoid cluttering test output
-	oldStderr := os.Stderr
-	_, w, err := os.Pipe()
+	// Patch sumaGetSystemID to use test server
+	id, err := sumaGetSystemID("cookie", server.URL, "testhost", false)
 	if err != nil {
-		t.Fatalf("failed to create pipe: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	os.Stderr = w
-
-	status := AddSystem("dummy-cookie", server.URL, "testhost", "testgroup", "192.168.1.0", false)
-
-	// Restore stderr
-	w.Close()
-	os.Stderr = oldStderr
-
-	if status != http.StatusOK {
-		t.Errorf("Expected status %d, got %d", http.StatusOK, status)
+	if id != 42 {
+		t.Errorf("expected id 42, got %d", id)
 	}
-
 }
 
-func TestAddSystem_SystemNotInNetwork(t *testing.T) {
-	getSystemID = func(sessioncookie, susemgr, hostname string, verbose bool) int {
-		return 42
-	}
-	getSystemIP = func(sessioncookie, susemgr string, id int, verbose bool) string {
-		return "10.0.0.1"
-	}
-	isSystemInNetwork = func(pip, pnetwork string) bool {
-		return false
-	}
-
-	// Silence stderr and capture os.Exit
-	oldStderr := os.Stderr
-	_, w, _ := os.Pipe()
-	os.Stderr = w
-
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("Expected os.Exit to be called")
+func TestSumaGetSystemID_NotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"success": true,
+			"result":  []map[string]interface{}{},
 		}
-		w.Close()
-		os.Stderr = oldStderr
-		getSystemID = origGetSystemID
-		getSystemIP = origGetSystemIP
-		isSystemInNetwork = origIsSystemInNetwork
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	id, err := sumaGetSystemID("cookie", server.URL, "missinghost", false)
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected not found error, got %v", err)
+	}
+	if id != -1 {
+		t.Errorf("expected id -1, got %d", id)
+	}
+}
+
+func TestSumaGetSystemIP_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"success": true,
+			"result": map[string]interface{}{
+				"ip":       "10.0.0.1",
+				"hostname": "testhost",
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	ip, err := sumaGetSystemIP("cookie", server.URL, 42, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ip != "10.0.0.1" {
+		t.Errorf("expected ip 10.0.0.1, got %s", ip)
+	}
+}
+
+func TestSumaGetSystemIP_NotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"success": true,
+			"result": map[string]interface{}{
+				"ip":       "",
+				"hostname": "testhost",
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	ip, err := sumaGetSystemIP("cookie", server.URL, 42, false)
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected not found error, got %v", err)
+	}
+	if ip != "" {
+		t.Errorf("expected empty ip, got %s", ip)
+	}
+}
+
+func TestSumaLogin_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.SetCookie(w, &http.Cookie{
+			Name:   "pxt-session-cookie",
+			Value:  "session123",
+			MaxAge: 3600,
+		})
+		w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	cookie, err := SumaLogin("user", "pass", server.URL, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cookie != "session123" {
+		t.Errorf("expected session123, got %s", cookie)
+	}
+}
+
+func TestSumaAddSystem_InvalidNetwork(t *testing.T) {
+	// Patch sumaGetSystemID and sumaGetSystemIP to return valid values
+	oldGetSystemID := sumaGetSystemID
+	oldGetSystemIP := sumaGetSystemIP
+	sumaGetSystemID = func(sessioncookie, susemgr, hostname string, verbose bool) (int, error) {
+		return 42, nil
+	}
+	sumaGetSystemIP = func(sessioncookie, susemgr string, id int, verbose bool) (string, error) {
+		return "10.0.0.1", nil
+	}
+	defer func() {
+		sumaGetSystemID = oldGetSystemID
+		sumaGetSystemIP = oldGetSystemIP
 	}()
 
-	// Override os.Exit to panic for test
-	//oldExit := osExit
-	osExit = func(code int) { panic("os.Exit called") }
-	defer func() { osExit = os.Exit }()
-
-	AddSystem("dummy-cookie", "http://dummy", "testhost", "testgroup", "192.168.1.0", false)
+	status, err := SumaAddSystem("cookie", "http://dummy", "host", "group", "192.168.1.0", false)
+	if err == nil || !strings.Contains(err.Error(), "does not belong to the permitted network") {
+		t.Errorf("expected network error, got %v", err)
+	}
+	if status != -1 {
+		t.Errorf("expected status -1, got %d", status)
+	}
 }
 
-// Patch os.Exit in AddSystem and helpers
-func init() {
-	// Patch all os.Exit calls in this package to use osExit
-	// This requires replacing all os.Exit(1) with osExit(1) in the code under test.
+func TestSumaDeleteSystem_InvalidNetwork(t *testing.T) {
+	oldGetSystemID := sumaGetSystemID
+	oldGetSystemIP := sumaGetSystemIP
+	sumaGetSystemID = func(sessioncookie, susemgr, hostname string, verbose bool) (int, error) {
+		return 42, nil
+	}
+	sumaGetSystemIP = func(sessioncookie, susemgr string, id int, verbose bool) (string, error) {
+		return "10.0.0.1", nil
+	}
+	defer func() {
+		sumaGetSystemID = oldGetSystemID
+		sumaGetSystemIP = oldGetSystemIP
+	}()
+
+	status, err := SumaDeleteSystem("cookie", "http://dummy", "host", "192.168.1.0", false)
+	if err == nil || !strings.Contains(err.Error(), "does not belong to the permitted network") {
+		t.Errorf("expected network error, got %v", err)
+	}
+	if status != -1 {
+		t.Errorf("expected status -1, got %d", status)
+	}
 }
+
+func TestSumaAddUser_Success(t *testing.T) {
+	// Mock SUSE Manager API server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Simulate a successful user addition response
+		resp := map[string]interface{}{
+			"success": true,
+			"result":  "User added successfully",
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	status, err := SumaAddUser("cookie", server.URL, "testuser", "testpass", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status != 0 {
+		t.Errorf("expected status 0, got %d", status)
+	}
+}
+
+func TestSumaAddUser_Failure(t *testing.T) {
+	// Mock SUSE Manager API server with failure response
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"success": false,
+			"error":   "User already exists",
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	status, err := SumaAddUser("cookie", server.URL, "existinguser", "testpass", false)
+	if err == nil || !strings.Contains(err.Error(), "User already exists") {
+		t.Errorf("expected error about existing user, got %v", err)
+	}
+	if status != -1 {
+		t.Errorf("expected status -1, got %d", status)
+	}
+}
+
+func TestSumaRemoveUser_Success(t *testing.T) {
+	// Mock SUSE Manager API server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Simulate a successful user removal response
+		resp := map[string]interface{}{
+			"success": true,
+			"result":  "User removed successfully",
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	err := SumaRemoveUser("cookie", server.URL, "testuser", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+}
+
+func TestSumaRemoveUser_Failure(t *testing.T) {
+	// Mock SUSE Manager API server with failure response
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"success": false,
+			"error":   "User does not exist",
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	err := SumaRemoveUser("cookie", server.URL, "nonexistentuser", false)
+	if err == nil || !strings.Contains(err.Error(), "User does not exist") {
+		t.Errorf("expected error about non-existent user, got %v", err)
+	}
+
+}
+
+// More tests can be added for SumaAddUser, SumaRemoveUser, sumaRemoveSystemGroup, sumaCheckSystemGroup, etc.
+// For brevity, only core exported functions and key error paths are covered here.

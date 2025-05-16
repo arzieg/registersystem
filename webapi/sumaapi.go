@@ -27,16 +27,16 @@ var isSystemInNetwork = func(pip, pnetwork string) bool {
 
 }
 
-func sumaGetSystemID(sessioncookie, susemgr, hostname string, verbose bool) (id int, err error) {
+var sumaGetSystemID = func(sessioncookie, susemgr, hostname string, verbose bool) (id int, err error) {
 
-	type ResultSystemGetId struct {
-		Id   int    `json:"id"`
+	type ResultSystemGetID struct {
+		ID   int    `json:"id"`
 		Name string `json:"name"`
 	}
 
-	type ResponseSystemGetId struct {
+	type ResponseSystemGetID struct {
 		Success bool                `json:"success"`
-		Result  []ResultSystemGetId `json:"result"`
+		Result  []ResultSystemGetID `json:"result"`
 	}
 	// Define the API endpoint
 	apiURL := fmt.Sprintf("%s%s", susemgr, "/rhn/manager/api")
@@ -98,7 +98,7 @@ func sumaGetSystemID(sessioncookie, susemgr, hostname string, verbose bool) (id 
 	}
 
 	// Unmarshal the JSON response into the struct
-	var rsp ResponseSystemGetId
+	var rsp ResponseSystemGetID
 	err = json.Unmarshal(bodyBytes, &rsp)
 	if err != nil {
 		log.Printf("error unmarshaling JSON: %s\n", err)
@@ -108,7 +108,7 @@ func sumaGetSystemID(sessioncookie, susemgr, hostname string, verbose bool) (id 
 	// Extract and print all fields
 	var foundID int
 	for _, r := range rsp.Result {
-		foundID = r.Id
+		foundID = r.ID
 	}
 
 	if foundID == 0 {
@@ -120,16 +120,16 @@ func sumaGetSystemID(sessioncookie, susemgr, hostname string, verbose bool) (id 
 
 }
 
-func sumaGetSystemIP(sessioncookie, susemgr string, id int, verbose bool) (foundIP string, err error) {
+var sumaGetSystemIP = func(sessioncookie, susemgr string, id int, verbose bool) (foundIP string, err error) {
 
-	type ResultSystemGetIp struct {
-		Ip   string `json:"ip"`
+	type ResultSystemGetIP struct {
+		IP   string `json:"ip"`
 		Name string `json:"hostname"`
 	}
 
-	type ResponseSystemGetIp struct {
+	type ResponseSystemGetIP struct {
 		Success bool              `json:"success"`
-		Result  ResultSystemGetIp `json:"result"`
+		Result  ResultSystemGetIP `json:"result"`
 	}
 
 	// Define the API endpoint
@@ -191,7 +191,7 @@ func sumaGetSystemIP(sessioncookie, susemgr string, id int, verbose bool) (found
 		log.Printf("DEBUG SUMAAPI sumaGetSystemIP: Got resp.Body = %s\n", string(bodyBytes))
 	}
 	// Unmarshal the JSON response into the struct
-	var rsp ResponseSystemGetIp
+	var rsp ResponseSystemGetIP
 	err = json.Unmarshal(bodyBytes, &rsp)
 	if err != nil {
 		log.Printf("error unmarshaling JSON: %s\n", err)
@@ -199,7 +199,7 @@ func sumaGetSystemIP(sessioncookie, susemgr string, id int, verbose bool) (found
 	}
 
 	// Extract and print all fields
-	foundIP = rsp.Result.Ip
+	foundIP = rsp.Result.IP
 
 	if foundIP == "" {
 		log.Printf("ID: %d not found in SUSE Manager on %s\n", id, susemgr)
@@ -213,7 +213,7 @@ func sumaGetSystemIP(sessioncookie, susemgr string, id int, verbose bool) (found
 
 }
 
-// Login try to login to SUSE Manager. Username, Password are get from Hashicorp Vault.
+// SumaLogin get the Username and Password from Hashicorp Vault.
 func SumaLogin(username, password, susemgr string, verbose bool) (sessioncookie string, err error) {
 
 	type AuthRequest struct {
@@ -305,7 +305,7 @@ func SumaLogin(username, password, susemgr string, verbose bool) (sessioncookie 
 	return sessioncookie, nil
 }
 
-// AddSystem add a System to a SUSE Manager SystemGroup.
+// SumaAddSystem add's a System to a SUSE Manager SystemGroup.
 func SumaAddSystem(sessioncookie, susemgr, hostname, group, network string, verbose bool) (statuscode int, err error) {
 
 	type AddRemoveSystem struct {
@@ -398,7 +398,7 @@ func SumaAddSystem(sessioncookie, susemgr, hostname, group, network string, verb
 
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Printf("error closing response body:", err)
+			log.Printf("error closing response body: %v", err)
 		}
 	}()
 
@@ -415,13 +415,13 @@ func SumaAddSystem(sessioncookie, susemgr, hostname, group, network string, verb
 
 }
 
-// DeleteSystem delete a System from the SUSE Manager . This implies, that it is also deleted from the SUSE Manager SystemGroup.
+// SumaDeleteSystem delete a System from the SUSE Manager. This implies, that it is also deleted from the SUSE Manager SystemGroup.
 // To ensure, that DeleteSystem could not delete other Systems from o differen IP range, the procedure check if the IP belongs
 // to the IP range we get from hashicorp vault.
 func SumaDeleteSystem(sessioncookie, susemgr, hostname, network string, verbose bool) (statsucode int, err error) {
 
 	type DeleteSystemType struct {
-		ServerId    int    `json:"sid"`
+		ServerID    int    `json:"sid"`
 		CleanupType string `json:"cleanupType"`
 	}
 
@@ -470,7 +470,7 @@ func SumaDeleteSystem(sessioncookie, susemgr, hostname, network string, verbose 
 
 	// Create the authentication request payload
 	DeleteSystemPayload := DeleteSystemType{
-		ServerId:    foundID,
+		ServerID:    foundID,
 		CleanupType: "FORCE_DELETE",
 	}
 
@@ -537,9 +537,9 @@ func sumaRemoveSystemGroup(sessioncookie, susemgrurl, group string, verbose bool
 		defer log.Println("DEBUG SUMAAPI SumeRemoveSystemGroup: Leave function")
 	}
 
-	check_systemgroup := sumaCheckSystemGroup(sessioncookie, group, susemgrurl, verbose)
+	checkSystemgroup := sumaCheckSystemGroup(sessioncookie, group, susemgrurl, verbose)
 
-	if !check_systemgroup {
+	if !checkSystemgroup {
 		log.Printf("no systemgroup %s found", group)
 		return http.StatusOK, nil
 	}
@@ -790,6 +790,7 @@ func sumaCheckUser(sessioncookie, group, susemgrurl string, verbose bool) (exist
 	return false
 }
 
+// SumaAddUser add a user to the suse manager.
 func SumaAddUser(sessioncookie, group, grouppassword, susemgrurl string, verbose bool) (statuscode int, err error) {
 
 	type AddUser struct {
@@ -885,6 +886,7 @@ func SumaAddUser(sessioncookie, group, grouppassword, susemgrurl string, verbose
 	return resp.StatusCode, nil
 }
 
+// SumaRemoveUser delete a user from the suse manager
 func SumaRemoveUser(sessioncookie, group, susemgrurl string, verbose bool) (err error) {
 
 	type RemoveUser struct {
@@ -979,8 +981,9 @@ func SumaRemoveUser(sessioncookie, group, susemgrurl string, verbose bool) (err 
 	return nil
 }
 
-func GetApiList(sessioncookie, susemgr string, verbose bool) {
-	type ResponseGetApiCallList struct {
+// GetAPIList is a helper function to get the API List from SUMA API
+func GetAPIList(sessioncookie, susemgr string, verbose bool) {
+	type ResponseGetAPICallList struct {
 		Name        string `json:"name"`
 		Parameters  string `json:"parameters"`
 		Exceptions  string `json:"string"`
@@ -995,13 +998,13 @@ func GetApiList(sessioncookie, susemgr string, verbose bool) {
 		log.Printf("DEBUG SUMAAPI GetApiList: apiURL =  %s\n", apiURL)
 	}
 
-	apiApiCallList := fmt.Sprintf("%s%s", apiURL, "/api/getApiCallList")
+	apiAPICallList := fmt.Sprintf("%s%s", apiURL, "/api/getApiCallList")
 	if verbose {
-		log.Printf("DEBUG SUMAAPI GetApiList: apiMethod = %s\n", apiApiCallList)
+		log.Printf("DEBUG SUMAAPI GetApiList: apiMethod = %s\n", apiAPICallList)
 	}
 
 	// Create a new HTTP request
-	req, err := http.NewRequest(http.MethodGet, apiApiCallList, nil)
+	req, err := http.NewRequest(http.MethodGet, apiAPICallList, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating request, error: %s\n", err)
 		osExit(1)
@@ -1045,7 +1048,7 @@ func GetApiList(sessioncookie, susemgr string, verbose bool) {
 		fmt.Fprintf(os.Stderr, "DEBUG: Got resp.Body = %s\n", string(bodyBytes))
 	}
 	// Unmarshal the JSON response into the struct
-	var rsp ResponseGetApiCallList
+	var rsp ResponseGetAPICallList
 	err = json.Unmarshal(bodyBytes, &rsp)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error unmarshaling JSON: %s\n", err)
