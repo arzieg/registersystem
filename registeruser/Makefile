@@ -1,5 +1,5 @@
 # Define variables
-APP_NAME := registersystem
+APP_NAME := registeruser
 SRC := $(shell find . -type f -name '*.go')
 
 # Default target
