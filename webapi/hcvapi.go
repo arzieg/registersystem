@@ -107,11 +107,14 @@ func VaultCreatePolicy(client *api.Client, group string, verbose bool) (policyNa
 		`path "kv-clab-%s*" {
 		capabilities = ["list", "read"]
 	}
-path "kv-clab-dagobah/suma" {
+path "kv-clab-dagobah/data/suma" {
 	capabilities = ["list", "read"]
 }
 path "sys/policies/acl/%s_read_policy" {
 	capabilities = ["read"]
+}
+path "auth/token/lookup-self" {
+  capabilities = ["read"]
 }`, group, group)
 
 	if verbose {
@@ -205,6 +208,22 @@ func VaultCreateRole(client *api.Client, group, policyName string, verbose bool)
 	}
 
 	return roleID, secretID, nil
+}
+
+func VaultRemoveRole(client *api.Client, group string, verbose bool) (err error) {
+
+	// Write the role to Vault
+	rolePath := fmt.Sprintf("auth/approle/role/%s", group)
+	_, err = client.Logical().Delete(rolePath)
+	if err != nil {
+		return err
+	}
+
+	if verbose {
+		log.Printf("DEBUG HCVAPI VaultRemoveRole: AppRole successfully deleted: %s", group)
+	}
+
+	return nil
 }
 
 func VaultEnableKVv2(client *api.Client, path string, verbose bool) (err error) {

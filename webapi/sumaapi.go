@@ -327,7 +327,7 @@ func SumaAddSystem(sessioncookie, susemgr, hostname, group, network string, verb
 	}
 
 	if foundID == 0 {
-		return -1, fmt.Errorf("did not found the system in SUSE Manager.")
+		return -1, fmt.Errorf("did not found the system in SUSE Manager")
 	}
 
 	foundIP, err := sumaGetSystemIP(sessioncookie, susemgr, foundID, verbose)
@@ -336,13 +336,13 @@ func SumaAddSystem(sessioncookie, susemgr, hostname, group, network string, verb
 	}
 
 	if foundIP == "" {
-		return -1, fmt.Errorf("did not found the system ID %d in SUSE Manager.", foundID)
+		return -1, fmt.Errorf("did not found the system ID %d in SUSE Manager", foundID)
 	}
 
 	isValid := isSystemInNetwork(foundIP, network)
 
 	if !isValid {
-		return -1, fmt.Errorf("system cannot be added. The system does not belong to the permitted network!")
+		return -1, fmt.Errorf("system cannot be added. The system does not belong to the permitted network")
 	}
 
 	// Define the API endpoint
@@ -438,7 +438,7 @@ func SumaDeleteSystem(sessioncookie, susemgr, hostname, network string, verbose 
 	}
 
 	if foundID == 0 {
-		return -1, fmt.Errorf("Did not find the system in SUSE Manager.")
+		return -1, fmt.Errorf("did not find the system in SUSE Manager")
 	}
 
 	foundIP, err := sumaGetSystemIP(sessioncookie, susemgr, foundID, verbose)
@@ -448,13 +448,13 @@ func SumaDeleteSystem(sessioncookie, susemgr, hostname, network string, verbose 
 	}
 
 	if foundIP == "" {
-		return -1, fmt.Errorf("did not find the system ID %d in SUSE Manager.", foundID)
+		return -1, fmt.Errorf("did not find the system ID %d in SUSE Manager", foundID)
 	}
 
 	isValid := isSystemInNetwork(foundIP, network)
 
 	if !isValid {
-		return -1, fmt.Errorf("%s cannot be deleted. The system does not belong to the permitted network of the group!", hostname)
+		return -1, fmt.Errorf("%s cannot be deleted. The system does not belong to the permitted network of the group", hostname)
 	}
 
 	// Define the API endpoint
@@ -523,6 +523,181 @@ func SumaDeleteSystem(sessioncookie, susemgr, hostname, network string, verbose 
 
 	return resp.StatusCode, nil
 
+}
+
+func sumaRemoveSystemGroup(sessioncookie, susemgrurl, group string, verbose bool) (statuscode int, err error) {
+
+	type RemoveSystemGroup struct {
+		SystemGroupName string `json:"systemGroupName"`
+	}
+
+	if verbose {
+		log.Println("DEBUG SUMAAPI SumeRemoveSystemGroup: Enter function")
+		log.Println("DEBUG SUMAAPI SumeRemoveSystemGroup: ==============")
+		defer log.Println("DEBUG SUMAAPI SumeRemoveSystemGroup: Leave function")
+	}
+
+	check_systemgroup := sumaCheckSystemGroup(sessioncookie, group, susemgrurl, verbose)
+
+	if !check_systemgroup {
+		log.Printf("no systemgroup %s found", group)
+		return http.StatusOK, nil
+	}
+
+	// Define the API endpoint
+	apiURL := fmt.Sprintf("%s%s", susemgrurl, "/rhn/manager/api")
+	if verbose {
+		log.Printf("DEBUG SUMAAPI SumaRemoveSystemGroup: apiURL =  %s\n", apiURL)
+	}
+
+	apiRemoveSystemGroup := fmt.Sprintf("%s%s", apiURL, "/systemgroup/delete")
+	if verbose {
+		log.Printf("DEBUG SUMAAPI SumaRemoveSystemGroup: apiMethod = %s\n", apiRemoveSystemGroup)
+	}
+
+	// Create the authentication request payload
+	RemoveSystemGroupPayload := RemoveSystemGroup{
+		SystemGroupName: group,
+	}
+
+	// Marshal the payload to JSON
+	payloadBytes, err := json.Marshal(RemoveSystemGroupPayload)
+	if err != nil {
+		log.Printf("error marshalling payload: %v\n", err)
+		return -1, err
+	}
+
+	if verbose {
+		log.Printf("DEBUG SUMAAPI SumaRemoveSystemGroup: Paylod =  %v\n", string(payloadBytes))
+	}
+
+	// Create an HTTP POST request
+	req, err := http.NewRequest(http.MethodPost, apiRemoveSystemGroup, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		log.Printf("error creating request: %v\n", err)
+		return -1, err
+	}
+
+	// Add headers
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{
+		Name:  "pxt-session-cookie",
+		Value: sessioncookie,
+	})
+
+	// Send the request using the HTTP client
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("error sending request: %v\n", err)
+		return -1, err
+	}
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("error closing response body: %v\n", err)
+		}
+	}()
+
+	if verbose {
+		log.Printf("DEBUG SUMAAPI SumaRemoveSystemGroup: Response: %v\n", resp)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return -1, fmt.Errorf("HTTP Request failed: HTTP/%d", resp.StatusCode)
+	}
+
+	return resp.StatusCode, nil
+
+}
+
+func sumaCheckSystemGroup(sessioncookie, group, susemgrurl string, verbose bool) (exists bool) {
+
+	type responseListAllGroups struct {
+		Result []struct {
+			Name string `json:"name"`
+		} `json:"result"`
+	}
+
+	if verbose {
+		log.Println("DEBUG SUMAAPI sumaCheckSystemGroup: Enter function")
+		log.Println("DEBUG SUMAAPI sumaCheckSystemGroup:===============")
+		defer log.Println("DEBUG SUMAAPI sumaCheckSystemGroup: Leave function")
+	}
+
+	// Define the API endpoint
+	apiURL := fmt.Sprintf("%s%s", susemgrurl, "/rhn/manager/api")
+	if verbose {
+		log.Printf("DEBUG SUMAAPI sumaCheckSystemGroup: apiURL =  %s\n", apiURL)
+	}
+
+	apiListAllGroups := fmt.Sprintf("%s%s", apiURL, "/systemgroup/listAllGroups")
+	if verbose {
+		log.Printf("DEBUG SUMAAPI sumaCheckSystemGroup: apiMethod = %s\n", apiListAllGroups)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, apiListAllGroups, nil)
+	if err != nil {
+		log.Printf("error creating request to get all systemgroups, error: %s\n", err)
+		osExit(1)
+	}
+
+	// Add headers
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{
+		Name:  "pxt-session-cookie",
+		Value: sessioncookie,
+	})
+
+	// Send the HTTP request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("error sending request: %s\n", err)
+		osExit(1)
+	}
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("error closing response body: %v", err)
+		}
+	}()
+
+	// Check HTTP status
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("http request failed: HTTP %d\n", resp.StatusCode)
+		osExit(1)
+	}
+
+	// Read response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("error reading http, got response: %s\n", err)
+		osExit(1)
+	}
+
+	if verbose {
+		log.Printf("DEBUG SUMAAPI sumaCheckSystemGroup: Got resp.Body = %s\n", string(bodyBytes))
+	}
+
+	// Unmarshal the JSON response into the struct
+	var rsp responseListAllGroups
+	err = json.Unmarshal(bodyBytes, &rsp)
+	if err != nil {
+		log.Printf("error unmarshaling JSON: %s\n", err)
+		osExit(1)
+	}
+
+	for _, sg := range rsp.Result {
+		if verbose {
+			log.Printf("DEBUG SUMAAPI sumaCheckSystemGroup: SG in SUMA: %s\n", sg.Name)
+		}
+		if sg.Name == group {
+			return true
+		}
+	}
+
+	return false
 }
 
 func sumaCheckUser(sessioncookie, group, susemgrurl string, verbose bool) (exists bool) {
@@ -721,6 +896,11 @@ func SumaRemoveUser(sessioncookie, group, susemgrurl string, verbose bool) (err 
 		log.Println("DEBUG SUMAAPI SumaRemoveUser: ==============")
 		defer log.Println("DEBUG SUMAAPI SumaRemoveUser: Leave function")
 		log.Printf("DEBUG SUMAAPI SumaRemoveUser: sessioncookie: %s\n", sessioncookie)
+	}
+
+	_, err = sumaRemoveSystemGroup(sessioncookie, susemgrurl, group, verbose)
+	if err != nil {
+		log.Fatalf("could not remove system group %s. Got %v", group, err)
 	}
 
 	//check if user exists

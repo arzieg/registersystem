@@ -201,6 +201,7 @@ func main() {
 	switch task {
 	case "add":
 		{
+
 			// create user in suma
 			sessioncookie, err := webapi.SumaLogin(sumalogin, sumapassword, sumaurl, verbose)
 			if err != nil {
@@ -249,12 +250,12 @@ func main() {
 
 			// write AppRole Output to KV
 			path = fmt.Sprintf("%s%s/data/approle_output", kvprefix, group)
-			err = webapi.VaultUpdateSecret(client, path, "role_id", roleID, verbose)
+			err = webapi.VaultUpdateSecret(client, path, "role_id", grouproleID, verbose)
 			if err != nil {
 				log.Fatalf("error writing secret to vault: %v", err)
 			}
 
-			err = webapi.VaultUpdateSecret(client, path, "secret_id", secretID, verbose)
+			err = webapi.VaultUpdateSecret(client, path, "secret_id", groupsecretID, verbose)
 			if err != nil {
 				log.Fatalf("error writing secret to vault: %v", err)
 			}
@@ -291,6 +292,11 @@ func main() {
 			err = webapi.VaultDeletePolicy(client, group, verbose)
 			if err != nil {
 				log.Fatalf("error deleting policy: %v", err)
+			}
+
+			err = webapi.VaultRemoveRole(client, group, verbose)
+			if err != nil {
+				log.Fatalf("error deleting role: %v", err)
 			}
 
 			// disable KV
