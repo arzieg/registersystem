@@ -2,6 +2,10 @@ package webapi
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -194,82 +198,231 @@ func TestSumaDeleteSystem_InvalidNetwork(t *testing.T) {
 }
 
 func TestSumaAddUser_Success(t *testing.T) {
-	// Mock SUSE Manager API server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Simulate a successful user addition response
-		resp := map[string]interface{}{
-			"success": true,
-			"result":  "User added successfully",
+		switch r.URL.Path {
+		case "/rhn/manager/api/user/listUsers":
+			w.Header().Set("Content-Type", "application/json")
+			// Simulate user does not exist
+			fmt.Fprint(w, `{"success": true, "result": []}`)
+		case "/rhn/manager/api/user/create":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, `{}`)
+		default:
+			http.NotFound(w, r)
 		}
-		json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
-	status, err := SumaAddUser("cookie", server.URL, "testuser", "testpass", false)
+	sessioncookie := "dummy"
+	group := "testuser"
+	grouppassword := "testpass"
+	susemgrurl := server.URL
+	verbose := false
+
+	status, err := SumaAddUser(sessioncookie, group, grouppassword, susemgrurl, verbose)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("SumaAddUser failed: %v", err)
 	}
-	if status != 0 {
-		t.Errorf("expected status 0, got %d", status)
+	if status != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d", http.StatusOK, status)
 	}
 }
 
 func TestSumaAddUser_Failure(t *testing.T) {
-	// Mock SUSE Manager API server with failure response
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"success": false,
-			"error":   "User already exists",
+		switch r.URL.Path {
+		case "/rhn/manager/api/user/listUsers":
+			w.Header().Set("Content-Type", "application/json")
+			// Simulate user does exist
+			fmt.Fprint(w, `{"success": false, "result": []}`)
+		case "/rhn/manager/api/user/create":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{}`)
+		default:
+			http.NotFound(w, r)
 		}
-		json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
-	status, err := SumaAddUser("cookie", server.URL, "existinguser", "testpass", false)
-	if err == nil || !strings.Contains(err.Error(), "User already exists") {
-		t.Errorf("expected error about existing user, got %v", err)
-	}
-	if status != -1 {
-		t.Errorf("expected status -1, got %d", status)
-	}
-}
+	sessioncookie := "dummy"
+	group := "testuser"
+	grouppassword := "testpass"
+	susemgrurl := server.URL
+	verbose := false
 
-func TestSumaRemoveUser_Success(t *testing.T) {
-	// Mock SUSE Manager API server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Simulate a successful user removal response
-		resp := map[string]interface{}{
-			"success": true,
-			"result":  "User removed successfully",
-		}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	err := SumaRemoveUser("cookie", server.URL, "testuser", false)
+	status, err := SumaAddUser(sessioncookie, group, grouppassword, susemgrurl, verbose)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("SumaAddUser failed: %v", err)
 	}
-
+	if status == http.StatusOK {
+		t.Fatalf("Expected status != 200, got %d", status)
+	}
 }
 
-func TestSumaRemoveUser_Failure(t *testing.T) {
-	// Mock SUSE Manager API server with failure response
+var (
+	origSumaRemoveSystemGroup = sumaRemoveSystemGroup
+	origSumaCheckUser         = sumaCheckUser
+	origOsExit                = osExit
+)
+
+// Helper to restore patched functions after test
+func restoreDeps() {
+	sumaRemoveSystemGroup = origSumaRemoveSystemGroup
+	sumaCheckUser = origSumaCheckUser
+	osExit = origOsExit
+}
+
+// Test SumaRemoveUser happy path (user exists, group removed, user deleted)
+func TestSumaRemoveUser_Success(t *testing.T) {
+	defer restoreDeps()
+
+	// Patch sumaRemoveSystemGroup to succeed
+	sumaRemoveSystemGroup = func(sessioncookie, susemgrurl, group string, verbose bool) (int, error) {
+		return http.StatusOK, nil
+	}
+	// Patch sumaCheckUser: first call returns true (user exists), second call returns false (user deleted)
+	callCount := 0
+	sumaCheckUser = func(sessioncookie, group, susemgrurl string, verbose bool) bool {
+		callCount++
+		return callCount == 1
+	}
+
+	// Mock SUSE Manager API for user/delete
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"success": false,
-			"error":   "User does not exist",
+		if r.URL.Path == "/rhn/manager/api/user/delete" {
+			w.WriteHeader(http.StatusOK)
+			return
 		}
-		json.NewEncoder(w).Encode(resp)
+		t.Errorf("unexpected path: %s", r.URL.Path)
 	}))
 	defer server.Close()
 
-	err := SumaRemoveUser("cookie", server.URL, "nonexistentuser", false)
-	if err == nil || !strings.Contains(err.Error(), "User does not exist") {
-		t.Errorf("expected error about non-existent user, got %v", err)
-	}
+	sessioncookie := "testcookie"
+	group := "testuser"
+	susemgrurl := server.URL
+	verbose := false
 
+	err := SumaRemoveUser(sessioncookie, group, susemgrurl, verbose)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
 }
 
-// More tests can be added for SumaAddUser, SumaRemoveUser, sumaRemoveSystemGroup, sumaCheckSystemGroup, etc.
-// For brevity, only core exported functions and key error paths are covered here.
+// Test SumaRemoveUser when user does not exist (should return nil, no error)
+func TestSumaRemoveUser_UserDoesNotExist(t *testing.T) {
+	defer restoreDeps()
+
+	sumaRemoveSystemGroup = func(sessioncookie, susemgrurl, group string, verbose bool) (int, error) {
+		return http.StatusOK, nil
+	}
+	sumaCheckUser = func(sessioncookie, group, susemgrurl string, verbose bool) bool {
+		return false
+	}
+
+	sessioncookie := "testcookie"
+	group := "nonexistent"
+	susemgrurl := "http://dummy"
+	verbose := false
+
+	err := SumaRemoveUser(sessioncookie, group, susemgrurl, verbose)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+// suppressStderr redirects os.Stderr to a pipe and drains it in a goroutine.
+// It returns a restore function to be deferred.
+func suppressStderr(t *testing.T) func() {
+	origStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	done := make(chan struct{})
+	go func() {
+		io.Copy(io.Discard, r)
+		close(done)
+	}()
+
+	return func() {
+		w.Close()
+		os.Stderr = origStderr
+		<-done
+	}
+}
+
+// suppressLogOutput redirects the default logger's output to io.Discard during the test.
+func suppressLogOutput(t *testing.T) func() {
+	orig := log.Writer()
+	r, w, _ := os.Pipe()
+	log.SetOutput(w)
+	done := make(chan struct{})
+	go func() {
+		io.Copy(io.Discard, r)
+		close(done)
+	}()
+	return func() {
+		w.Close()
+		log.SetOutput(orig)
+		<-done
+	}
+}
+
+// Test SumaRemoveUser when sumaRemoveSystemGroup returns error (should call log.Fatalf)
+func TestSumaRemoveUser_RemoveSystemGroupFails(t *testing.T) {
+	defer restoreDeps()
+	defer suppressStderr(t)()
+	defer suppressLogOutput(t)()
+
+	sumaRemoveSystemGroup = func(sessioncookie, susemgrurl, group string, verbose bool) (int, error) {
+		return -1, errors.New("fail to remove group")
+	}
+	osExit = func(code int) { panic("osExit called") }
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("expected panic due to log.Fatalf/osExit, got none")
+		}
+	}()
+
+	sessioncookie := "testcookie"
+	group := "testuser"
+	susemgrurl := "http://dummy"
+	verbose := false
+
+	_ = SumaRemoveUser(sessioncookie, group, susemgrurl, verbose)
+}
+
+// Test SumaRemoveUser when HTTP request fails (simulate 500 error)
+func TestSumaRemoveUser_HttpDeleteFails(t *testing.T) {
+	defer restoreDeps()
+
+	sumaRemoveSystemGroup = func(sessioncookie, susemgrurl, group string, verbose bool) (int, error) {
+		return http.StatusOK, nil
+	}
+	// First call: user exists, second call: user still exists (so delete attempted)
+	callCount := 0
+	sumaCheckUser = func(sessioncookie, group, susemgrurl string, verbose bool) bool {
+		callCount++
+		return true
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/rhn/manager/api/user/delete" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}))
+	defer server.Close()
+
+	sessioncookie := "testcookie"
+	group := "testuser"
+	susemgrurl := server.URL
+	verbose := false
+
+	err := SumaRemoveUser(sessioncookie, group, susemgrurl, verbose)
+	if err == nil {
+		t.Fatalf("expected error due to HTTP 500, got nil")
+	}
+}

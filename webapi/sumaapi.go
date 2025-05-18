@@ -525,7 +525,7 @@ func SumaDeleteSystem(sessioncookie, susemgr, hostname, network string, verbose 
 
 }
 
-func sumaRemoveSystemGroup(sessioncookie, susemgrurl, group string, verbose bool) (statuscode int, err error) {
+var sumaRemoveSystemGroup = func(sessioncookie, susemgrurl, group string, verbose bool) (statuscode int, err error) {
 
 	type RemoveSystemGroup struct {
 		SystemGroupName string `json:"systemGroupName"`
@@ -700,7 +700,7 @@ func sumaCheckSystemGroup(sessioncookie, group, susemgrurl string, verbose bool)
 	return false
 }
 
-func sumaCheckUser(sessioncookie, group, susemgrurl string, verbose bool) (exists bool) {
+var sumaCheckUser = func(sessioncookie, group, susemgrurl string, verbose bool) (exists bool) {
 
 	type responseUserListUsers struct {
 		Success bool `json:"success"`
