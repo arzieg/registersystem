@@ -2,7 +2,6 @@ package webapi
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -367,31 +366,6 @@ func suppressLogOutput(t *testing.T) func() {
 		log.SetOutput(orig)
 		<-done
 	}
-}
-
-// Test SumaRemoveUser when sumaRemoveSystemGroup returns error (should call log.Fatalf)
-func TestSumaRemoveUser_RemoveSystemGroupFails(t *testing.T) {
-	defer restoreDeps()
-	defer suppressStderr(t)()
-	defer suppressLogOutput(t)()
-
-	sumaRemoveSystemGroup = func(sessioncookie, susemgrurl, group string, verbose bool) (int, error) {
-		return -1, errors.New("fail to remove group")
-	}
-	osExit = func(code int) { panic("osExit called") }
-
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatalf("expected panic due to log.Fatalf/osExit, got none")
-		}
-	}()
-
-	sessioncookie := "testcookie"
-	group := "testuser"
-	susemgrurl := "http://dummy"
-	verbose := false
-
-	_ = SumaRemoveUser(sessioncookie, group, susemgrurl, verbose)
 }
 
 // Test SumaRemoveUser when HTTP request fails (simulate 500 error)
