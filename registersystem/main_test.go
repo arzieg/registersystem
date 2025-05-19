@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// Test isFQDN
 func TestIsFQDN(t *testing.T) {
 	tests := []struct {
 		hostname string
@@ -26,6 +27,7 @@ func TestIsFQDN(t *testing.T) {
 	}
 }
 
+// Test isURL
 func TestIsURL(t *testing.T) {
 	tests := []struct {
 		line string
@@ -48,6 +50,7 @@ func TestIsURL(t *testing.T) {
 	}
 }
 
+// Test isEmpty
 func TestIsEmpty(t *testing.T) {
 	tests := []struct {
 		line string
@@ -65,6 +68,7 @@ func TestIsEmpty(t *testing.T) {
 	}
 }
 
+// Test getTask
 func TestGetTask(t *testing.T) {
 	tests := []struct {
 		line string
@@ -80,41 +84,60 @@ func TestGetTask(t *testing.T) {
 	for _, tt := range tests {
 		got := getTask(tt.line)
 		if got != tt.want {
-			t.Errorf("isEmpty(%q) = %v; want %v", tt.line, got, tt.want)
+			t.Errorf("getTask(%q) = %v; want %v", tt.line, got, tt.want)
 		}
 	}
 }
 
+// Test checkFlag
 func TestCheckFlag(t *testing.T) {
-	valid := checkFlag("role", "secret", "group", "host.example.com", "http://susemgr", "http://vault", "add")
+	valid := checkFlag("role", "secret", "group", "host.example.com", "http://vault", "add")
 	if !valid {
 		t.Error("Expected valid flags to pass checkFlag")
 	}
 
 	invalids := []struct {
-		proleID, psecretID, pgroup, phostname, psusemgr, pvault, ptask string
+		proleID, psecretID, pgroup, phostname, pvault, ptask string
 	}{
-		{"", "secret", "group", "host.example.com", "http://susemgr", "http://vault", "add"},
-		{"role", "", "group", "host.example.com", "http://susemgr", "http://vault", "add"},
-		{"role", "secret", "", "host.example.com", "http://susemgr", "http://vault", "add"},
-		{"role", "secret", "group", "", "http://susemgr", "http://vault", "add"},
-		{"role", "secret", "group", "host.example.com", "", "http://vault", "add"},
-		{"role", "secret", "group", "host.example.com", "http://susemgr", "", "add"},
-		{"role", "secret", "group", "host.example.com", "http://susemgr", "http://vault", ""},
-		{"role", "secret", "group", "notfqdn", "http://susemgr", "http://vault", "add"},
+		{"", "secret", "group", "host.example.com", "http://vault", "add"},
+		{"role", "", "group", "host.example.com", "http://vault", "add"},
+		{"role", "secret", "", "host.example.com", "http://vault", "add"},
+		{"role", "secret", "group", "", "http://vault", "add"},
+		{"role", "secret", "group", "host.example.com", "", "add"},
+		{"role", "secret", "group", "host.example.com", "http://vault", ""},
+		{"role", "secret", "group", "notfqdn", "http://vault", "add"},
 	}
 
 	for i, inv := range invalids {
-		if checkFlag(inv.proleID, inv.psecretID, inv.pgroup, inv.phostname, inv.psusemgr, inv.pvault, inv.ptask) {
+		if checkFlag(inv.proleID, inv.psecretID, inv.pgroup, inv.phostname, inv.pvault, inv.ptask) {
 			t.Errorf("Expected checkFlag to fail for invalid input set #%d: %+v", i, inv)
 		}
 	}
 }
 
+// Test flag parsing and global variable assignment
 func TestFlagParsing(t *testing.T) {
 	// Save original os.Args and reset after test
 	origArgs := os.Args
 	defer func() { os.Args = origArgs }()
+
+	// Save original global variables and restore after test
+	origRoleID := roleID
+	origSecretID := secretID
+	origGroup := group
+	origHostname := hostname
+	origVaultAddress := vaultAddress
+	origTask := task
+	origVerbose := verbose
+	defer func() {
+		roleID = origRoleID
+		secretID = origSecretID
+		group = origGroup
+		hostname = origHostname
+		vaultAddress = origVaultAddress
+		task = origTask
+		verbose = origVerbose
+	}()
 
 	os.Args = []string{
 		"cmd",
@@ -122,7 +145,6 @@ func TestFlagParsing(t *testing.T) {
 		"-s", "secretid",
 		"-g", "group",
 		"-h", "host.example.com",
-		"-m", "http://susemgr",
 		"-a", "http://vault",
 		"-t", "add",
 		"-v",
@@ -148,9 +170,6 @@ func TestFlagParsing(t *testing.T) {
 	}
 	if hostname != "host.example.com" {
 		t.Errorf("Expected hostname to be 'host.example.com', got %q", hostname)
-	}
-	if susemgr != "http://susemgr" {
-		t.Errorf("Expected susemgr to be 'http://susemgr', got %q", susemgr)
 	}
 	if vaultAddress != "http://vault" {
 		t.Errorf("Expected vaultAddress to be 'http://vault', got %q", vaultAddress)
