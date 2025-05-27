@@ -5,18 +5,6 @@ package main
    create user and role in hcv. create user in suse manager
 */
 
-/*
-  call
-   registeruser -r <roleID> -s <secretID> -a <hcv-vault-addr>
-   		-d <password-to-create-in-suma> -g <suma-group-to-create>
-		-n <network configured for dev environment>
-		-t <create/delete entry>
-		-v <verbose>
-
-	output: role-id, secret-id
-
-*/
-
 import (
 	"flag"
 	"fmt"
@@ -59,7 +47,7 @@ func registerFlags(fs *flag.FlagSet) {
 
 func customUsage() {
 	fmt.Fprintf(os.Stderr, "Usage of %s: -r [roleID] -s [secretID] -a [URL Vault] -g [SUMA Group] -d [SUMA Grouppassword] -n [Network] -t [add|delete] -v [verbose]\n\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "The program create or delete an user und policy in HCV and create an user in the SUSE Manager .\n\nParameter:\n")
+	fmt.Fprintf(os.Stderr, "The program create or delete an user und policy in HCV and create an user in the SUSE Manager.\n\nParameter:\n")
 
 	flag.PrintDefaults()
 }
@@ -145,14 +133,14 @@ func main() {
 	flag.Parse()
 
 	if verbose {
-		log.Println("DEBUG MAIN: verbose: ", verbose)
-		log.Println("DEBUG MAIN: roleID:", roleID)
-		log.Println("DEBUG MAIN: secretID:", secretID)
-		log.Println("DEBUG MAIN: group:", group)
-		log.Println("DEBUG MAIN: grouppassword:", grouppassword)
-		log.Println("DEBUG MAIN: network:", network)
-		log.Println("DEBUG MAIN: vaultAddress:", vaultAddress)
-		log.Println("DEBUG MAIN: task:", task)
+		log.Println("DEBUG MAIN Parameter: verbose: ", verbose)
+		log.Println("DEBUG MAIN Parameter: roleID:", roleID)
+		log.Println("DEBUG MAIN Parameter: secretID:", secretID)
+		log.Println("DEBUG MAIN Parameter: group:", group)
+		log.Println("DEBUG MAIN Parameter: grouppassword:", grouppassword)
+		log.Println("DEBUG MAIN Parameter: network:", network)
+		log.Println("DEBUG MAIN Parameter: vaultAddress:", vaultAddress)
+		log.Println("DEBUG MAIN Parameter: task:", task)
 	}
 
 	// no args
@@ -172,7 +160,7 @@ func main() {
 
 	client, err := webapi.VaultLogin(roleID, secretID, vaultAddress, verbose)
 	if err != nil {
-		log.Fatalf("error logging in to Vault: %v", err)
+		log.Fatalf("error login into Vault: %v", err)
 	}
 
 	defer webapi.VaultLogout(client, verbose)
@@ -183,7 +171,7 @@ func main() {
 	}
 
 	if suma["login"] == nil || suma["login"] == "" {
-		log.Fatalf("error, suma login user not definied. Check value in vault.")
+		log.Fatalf("error, suma user not definied. Check value in vault.")
 	}
 
 	if suma["password"] == nil || suma["password"] == "" {
@@ -219,9 +207,8 @@ func main() {
 				log.Printf("an error occured, got http error %d", result)
 				os.Exit(1)
 			} else {
-				log.Printf("successful add user %s to SUMA\n", group)
 				if verbose {
-					log.Printf("got result from %s: %d\n", sumaurl, result)
+					log.Printf("successful add user %s, got result from %s: %d\n", group, sumaurl, result)
 				}
 			}
 
@@ -269,8 +256,6 @@ func main() {
 
 			fmt.Fprintf(os.Stdout, "API Login-Information for User: %s\nroleID=%s\nsecretID=%s\n", group, grouproleID, groupsecretID)
 
-			//webapi.GetApiList(sessioncookie, sumaurl, verbose)
-
 		}
 	case "delete":
 		{
@@ -286,7 +271,7 @@ func main() {
 			if err != nil {
 				log.Printf("an error occured, got error %v", err)
 			} else {
-				log.Printf("successful remove user %s\n", group)
+				log.Printf("user %s successfully removed from SUMA.\n", group)
 			}
 
 			err = webapi.VaultDeletePolicy(client, group, verbose)
@@ -306,7 +291,7 @@ func main() {
 				log.Fatalf("error disable kv, got: %v ", err)
 			}
 
-			log.Printf("successful remove policy and kv-vault\n")
+			log.Printf("policy and kv-vault successfully removed from HCV.\n")
 		}
 	}
 	os.Exit(0)

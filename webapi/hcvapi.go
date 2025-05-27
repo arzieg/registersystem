@@ -19,7 +19,6 @@ func VaultGetSecrets(client *api.Client, vaultAddress, group, path string, verbo
 	// Retrieve the secret
 	secret, err := client.Logical().Read(secretPath)
 	if err != nil {
-		log.Printf("error reading secret: %v\n", err)
 		return nil, err
 	}
 

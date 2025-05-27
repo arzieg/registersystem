@@ -112,8 +112,8 @@ var sumaGetSystemID = func(sessioncookie, susemgr, hostname string, verbose bool
 	}
 
 	if foundID == 0 {
-		log.Printf("host: %s not found in SUSE Manager on %s\n", hostname, susemgr)
-		return -1, fmt.Errorf("host: %s not found in SUSE Manager on %s", hostname, susemgr)
+		log.Printf("%s not found in SUSE Manager on %s\n", hostname, susemgr)
+		return -1, fmt.Errorf("%s not found in SUSE Manager on %s", hostname, susemgr)
 	}
 
 	return foundID, nil
@@ -322,7 +322,6 @@ func SumaAddSystem(sessioncookie, susemgr, hostname, group, network string, verb
 
 	foundID, err := sumaGetSystemID(sessioncookie, susemgr, hostname, verbose)
 	if err != nil {
-		log.Printf("could not get system id, errorcode = %v", err)
 		return -1, err
 	}
 
@@ -332,7 +331,8 @@ func SumaAddSystem(sessioncookie, susemgr, hostname, group, network string, verb
 
 	foundIP, err := sumaGetSystemIP(sessioncookie, susemgr, foundID, verbose)
 	if err != nil {
-		log.Fatalf("Could not get IP, errorcode: %v", err)
+		log.Printf("could not get ip, errorcode: %v\n", err)
+		return -1, err
 	}
 
 	if foundIP == "" {
@@ -342,7 +342,7 @@ func SumaAddSystem(sessioncookie, susemgr, hostname, group, network string, verb
 	isValid := isSystemInNetwork(foundIP, network)
 
 	if !isValid {
-		return -1, fmt.Errorf("system cannot be added. The system does not belong to the permitted network")
+		return -1, fmt.Errorf("system cannot be added, the system does not belong to the permitted network")
 	}
 
 	// Define the API endpoint
@@ -433,7 +433,6 @@ func SumaDeleteSystem(sessioncookie, susemgr, hostname, network string, verbose 
 
 	foundID, err := sumaGetSystemID(sessioncookie, susemgr, hostname, verbose)
 	if err != nil {
-		log.Printf("could not get system id, errorcode = %v\n", err)
 		return -1, err
 	}
 
@@ -454,7 +453,7 @@ func SumaDeleteSystem(sessioncookie, susemgr, hostname, network string, verbose 
 	isValid := isSystemInNetwork(foundIP, network)
 
 	if !isValid {
-		return -1, fmt.Errorf("%s cannot be deleted. The system does not belong to the permitted network of the group", hostname)
+		return -1, fmt.Errorf("%s cannot be deleted, the system does not belong to the permitted network of the group", hostname)
 	}
 
 	// Define the API endpoint
@@ -540,7 +539,7 @@ var sumaRemoveSystemGroup = func(sessioncookie, susemgrurl, group string, verbos
 	checkSystemgroup := sumaCheckSystemGroup(sessioncookie, group, susemgrurl, verbose)
 
 	if !checkSystemgroup {
-		log.Printf("no systemgroup %s found", group)
+		log.Printf("no systemgroup %s found.", group)
 		return http.StatusOK, nil
 	}
 
@@ -811,7 +810,8 @@ func SumaAddUser(sessioncookie, group, grouppassword, susemgrurl string, verbose
 	ok := sumaCheckUser(sessioncookie, group, susemgrurl, verbose)
 
 	if ok {
-		log.Fatalf("user %s already exists in SUMA.\n", group)
+		log.Printf("user %s already exists in SUMA.\n", group)
+		return http.StatusOK, nil
 	}
 
 	// Define the API endpoint
@@ -902,7 +902,8 @@ func SumaRemoveUser(sessioncookie, group, susemgrurl string, verbose bool) (err 
 
 	_, err = sumaRemoveSystemGroup(sessioncookie, susemgrurl, group, verbose)
 	if err != nil {
-		log.Fatalf("could not remove system group %s. Got %v", group, err)
+		log.Printf("could not remove system group %s. Got %v\n", group, err)
+		return err
 	}
 
 	//check if user exists

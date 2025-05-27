@@ -142,13 +142,13 @@ func main() {
 	flag.Parse()
 
 	if verbose {
-		fmt.Println("DEBUG MAIN: verbose: ", verbose)
-		fmt.Println("DEBUG MAIN: roleID:", roleID)
-		fmt.Println("DEBUG MAIN: secretID:", secretID)
-		fmt.Println("DEBUG MAIN: group:", group)
-		fmt.Println("DEBUG MAIN: hostname:", hostname)
-		fmt.Println("DEBUG MAIN: vaultAddress:", vaultAddress)
-		fmt.Println("DEBUG MAIN: task:", task)
+		fmt.Println("DEBUG MAIN Parameter: verbose: ", verbose)
+		fmt.Println("DEBUG MAIN Parameter: roleID:", roleID)
+		fmt.Println("DEBUG MAIN Parameter: secretID:", secretID)
+		fmt.Println("DEBUG MAIN Parameter: group:", group)
+		fmt.Println("DEBUG MAIN Parameter: hostname:", hostname)
+		fmt.Println("DEBUG MAIN Parameter: vaultAddress:", vaultAddress)
+		fmt.Println("DEBUG MAIN Parameter: task:", task)
 	}
 
 	// no args
@@ -221,13 +221,13 @@ func main() {
 	case "add":
 		result, err := webapi.SumaAddSystem(sessioncookie, sumaurl, hostname, group, network, verbose)
 		if err != nil {
-			log.Fatalf("Could not add System to Suma, errorcode: %v", err)
+			log.Fatalf("could not add System to Suma. %v", err)
 		}
 		if result != http.StatusOK {
-			fmt.Fprintf(os.Stderr, "An error occured, got http error %d", result)
+			fmt.Fprintf(os.Stderr, "an error occured, got http error %d", result)
 			os.Exit(1)
 		} else {
-			fmt.Printf("Successful add system %s to group %s\n", hostname, group)
+			fmt.Printf("Add system %s successfully to group %s\n", hostname, group)
 			if verbose {
 				fmt.Printf("Got result: %d\n", result)
 			}
